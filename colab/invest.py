@@ -13,7 +13,7 @@ https://tinkoff.github.io/investAPI/operations/#portfoliorequest
 https://tinkoff.github.io/investAPI
 https://github.com/Tinkoff/invest-python
 """
-def run(): 
+def run():  
  
     try:
         with Client(os.environ['TINKOFF_TOKEN_RO']) as client:
