@@ -1,4 +1,4 @@
-from tinkoff.invest import Client, RequestError, PortfolioResponse, PositionsResponse, PortfolioPosition
+from tinkoff.invest import Client, RequestError, PortfolioResponse, PositionsResponse, PortfolioPosition, InstrumentStatus
  
 import pandas as pd
 import os
@@ -17,16 +17,22 @@ def run():
  
     try:
         with Client(os.environ['TINKOFF_TOKEN_RO']) as client:
+            allShares=getMapOfAllShares(client)
+            
+            
+            #print(allShares)
+            #print(getShareNameByFigi('BBG0136BTL03', allShares))
             #getAccounts(client)
             #return
+            """
             # т.к. есть валятные активы (у меня etf), то нужно их отконвертить в рубли
             # я работаю только в долл, вам возможно будут нужны и др валюты
             u = client.market_data.get_last_prices(figi=['USD000UTSTOM'])
             usdrur = cast_money(u.last_prices[0].price)
- 
+            """
             r : PortfolioResponse = client.operations.get_portfolio(account_id='2090759289')
-            df = pd.DataFrame([portfolio_pose_todict(p, usdrur) for p in r.positions])
-            print(df.head(100))
+            df = pd.DataFrame([portfolio_pose_todict(p, allShares) for p in r.positions])
+            print(df.sort_values(by=['%'],ascending=False))
  
             print("bonds", cast_money(r.total_amount_bonds), df.query("instrument_type == 'bond'")['sell_sum'].sum(), sep=" : ")
             print("etfs", cast_money(r.total_amount_etf), df.query("instrument_type == 'etf'")['sell_sum'].sum(), sep=" : ")
@@ -34,9 +40,22 @@ def run():
  
     except RequestError as e:
         print(str(e))
- 
-def portfolio_pose_todict(p : PortfolioPosition, usdrur):
+def getMapOfAllShares(client):
+    instruments: InstrumentsService = client.instruments
+    r = pd.DataFrame(
+        instruments.shares(instrument_status=InstrumentStatus.INSTRUMENT_STATUS_ALL).instruments,
+        columns=['name','figi','ticker','class_code']
+        )
+    return r
+def getShareInfoByFigi(figi, allShares):
+    return allShares[allShares['figi'] == figi]
+def getShareNameByFigi(figi, allShares):
+    r = allShares[allShares['figi'] == figi]['name']
+    return list(r)
+    
+def portfolio_pose_todict(p : PortfolioPosition, allShares):
     r = {
+        'name': getShareNameByFigi(p.figi, allShares),
         'figi': p.figi,
         'quantity': cast_money(p.quantity),
         'expected_yield': cast_money(p.expected_yield),
@@ -46,16 +65,18 @@ def portfolio_pose_todict(p : PortfolioPosition, usdrur):
         'nkd': cast_money(p.current_nkd),
     }
  
+    """
     if r['currency'] == 'usd':
         # если бы expected_yield быk бы тоже MoneyValue,
         # то конвертацию валюты можно было бы вынести в cast_money
         r['expected_yield'] *= usdrur
         r['average_buy_price'] *= usdrur
         r['nkd'] *= usdrur
- 
+    """
     r['sell_sum'] = (r['average_buy_price']*r['quantity']) + r['expected_yield'] + (r['nkd']*r['quantity'])
     r['comission'] = r['sell_sum']*0.003
     r['tax'] = r['expected_yield']*0.013 if r['expected_yield'] > 0 else 0
+    r['%'] = r['expected_yield'] / (r['average_buy_price']*r['quantity']) * 100 if (r['average_buy_price']*r['quantity'])!=0 else 0
  
     return r
 
