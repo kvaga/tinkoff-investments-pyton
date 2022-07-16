@@ -18,20 +18,26 @@ def run():
     try:
         with Client(os.environ['TINKOFF_TOKEN_RO']) as client:
             allShares=getMapOfAllShares(client)
-            
-            
+            allBonds = getMapOfAllBonds(client)
+            allEtfs = getMapOfAllETFs(client)
+            # BBG012C34FX0
             #print(allShares)
+            #print(allBonds)
+            
+            # print(allEtfs)
+
+
             #print(getShareNameByFigi('BBG0136BTL03', allShares))
             #getAccounts(client)
-            #return
+            # return
             """
             # т.к. есть валятные активы (у меня etf), то нужно их отконвертить в рубли
             # я работаю только в долл, вам возможно будут нужны и др валюты
             u = client.market_data.get_last_prices(figi=['USD000UTSTOM'])
             usdrur = cast_money(u.last_prices[0].price)
             """
-            r : PortfolioResponse = client.operations.get_portfolio(account_id='2090759289')
-            df = pd.DataFrame([portfolio_pose_todict(p, allShares) for p in r.positions])
+            r : PortfolioResponse = client.operations.get_portfolio(account_id='2000079539')
+            df = pd.DataFrame([portfolio_pose_todict(p, allShares, allBonds, allEtfs) for p in r.positions])
             print(df.sort_values(by=['%'],ascending=False))
  
             print("bonds", cast_money(r.total_amount_bonds), df.query("instrument_type == 'bond'")['sell_sum'].sum(), sep=" : ")
@@ -52,10 +58,34 @@ def getShareInfoByFigi(figi, allShares):
 def getShareNameByFigi(figi, allShares):
     r = allShares[allShares['figi'] == figi]['name']
     return list(r)
-    
-def portfolio_pose_todict(p : PortfolioPosition, allShares):
+def getMapOfAllBonds(client):
+    instruments: InstrumentsService = client.instruments
+    r = pd.DataFrame(
+        instruments.bonds(instrument_status=InstrumentStatus.INSTRUMENT_STATUS_ALL).instruments,
+        columns=['name','figi','ticker','class_code']
+        )
+    return r
+def getBondInfoByFigi(figi, allBonds):
+    return allBonds[allBonds['figi'] == figi]
+def getBondNameByFigi(figi, allBonds):
+    r = allBonds[allBonds['figi'] == figi]['name']
+    return list(r)
+
+def getMapOfAllETFs(client):
+    instruments: InstrumentsService = client.instruments
+    r = pd.DataFrame(
+        instruments.etfs(instrument_status=InstrumentStatus.INSTRUMENT_STATUS_ALL).instruments,
+        columns=['name','figi','ticker','class_code']
+        )
+    return r
+def getETFInfoByFigi(figi, allETFs):
+    return allETFs[allETFs['figi'] == figi]
+def getETFNameByFigi(figi, allETFS):
+    r = allETFS[allETFS['figi'] == figi]['name']
+    return list(r)
+def portfolio_pose_todict(p : PortfolioPosition, allShares, allBonds, allETFs):
     r = {
-        'name': getShareNameByFigi(p.figi, allShares),
+        'name': getShareNameByFigi(p.figi, allShares) if p.instrument_type == 'share' else getBondNameByFigi(p.figi, allBonds) if p.instrument_type == 'bond' else getETFNameByFigi(p.figi, allETFs) if p.instrument_type == 'etf' else 'UnknownInstrumentType', 
         'figi': p.figi,
         'quantity': cast_money(p.quantity),
         'expected_yield': cast_money(p.expected_yield),
