@@ -1,5 +1,4 @@
 from tinkoff.invest import Client, RequestError, PortfolioResponse, PositionsResponse, PortfolioPosition, InstrumentStatus
- 
 import pandas as pd
 import os
 pd.set_option('display.max_rows', 500)
@@ -20,13 +19,15 @@ def run():
             allShares=getMapOfAllShares(client)
             allBonds = getMapOfAllBonds(client)
             allEtfs = getMapOfAllETFs(client)
+            allCurrencies = getMapOfAllCurrencies(client)
+            allFutures = getMapOfAllFutures(client)
+
+            commonDataframe = []
+            # commonDataframe = pd.DataFrame(columns=['name', 'quantity', 'average_buy_price', 'currency', 'instrument_type', 'expected_yield'])
             # BBG012C34FX0
             #print(allShares)
             #print(allBonds)
-            
             # print(allEtfs)
-
-
             #print(getShareNameByFigi('BBG0136BTL03', allShares))
             #getAccounts(client)
             # return
@@ -36,16 +37,102 @@ def run():
             u = client.market_data.get_last_prices(figi=['USD000UTSTOM'])
             usdrur = cast_money(u.last_prices[0].price)
             """
-            r : PortfolioResponse = client.operations.get_portfolio(account_id='2000079539')
-            df = pd.DataFrame([portfolio_pose_todict(p, allShares, allBonds, allEtfs) for p in r.positions])
-            print(df.sort_values(by=['%'],ascending=False))
- 
+            for x in [\
+                        '2111522740', #             Маржиналка лонг /
+                        '2111426330', #             Маржиналка шорт /
+                        '2090759289', #                       Коган /
+                        '2000079539', #                         Мой /
+                        '2038244386', #                         ИИС /
+                        # '2036073431', #               Инвесткопилка /
+                        '2111421018', # Не выводить - налог большой /
+                        '2111427718', #          ВТБ Мои Инвестиции /
+                        '2111450124', #        Коган Товарные рынки /
+                        '2111497117', #                   Удалить 5 /
+                        '2111378143', #             Открытие Брокер /
+                        '2111713042', #         Коган Второй эшелон /
+                    ]: 
+                # print(x)
+                r : PortfolioResponse = client.operations.get_portfolio(account_id=x)
+                df = pd.DataFrame([portfolio_pose_todict(p, allShares, allBonds, allEtfs, allCurrencies, allFutures) for p in r.positions])
+                # print(df)
+                # commonDataframe.append(df)
+                #
+                commonDataframe.append(df)
+                # pd.concat([commonDataframe,df], ignore_index=True)
+                #
+                # print(df.sort_values(by=['%'],ascending=False))
+                # print(df.size)
+                # pd.concat([commonDataframe, df], ignore_index=True, sort=False)
+            # print(commonDataframe.sort_values(by=['%'],ascending=False))
+            # print(pd.concat(commonDataframe).sort_values(by=['%'],ascending=False))
+            # print(getYieldByInstruments(pd.concat(commonDataframe)))
+            getYieldByInstruments(pd.concat(commonDataframe))
+            # print(getYieldByInstruments(commonDataframe))
+                        
+            """
             print("bonds", cast_money(r.total_amount_bonds), df.query("instrument_type == 'bond'")['sell_sum'].sum(), sep=" : ")
             print("etfs", cast_money(r.total_amount_etf), df.query("instrument_type == 'etf'")['sell_sum'].sum(), sep=" : ")
             print(df['comission'].sum())
+            """
  
     except RequestError as e:
         print(str(e))
+
+def getYieldByInstruments(dFrame):
+    df = dFrame[['name', 'quantity', 'average_buy_price', 'currency', 'instrument_type', 'expected_yield', 'investments']]
+    x = df.groupby(['name', 'currency', 'instrument_type']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum'})
+    x['average_buy_price'] = x['investments'] / x['quantity']
+    x['%'] = (x['expected_yield'] / x['investments'])  * 100 
+    # print(dFrame)
+    # x = dFrame[['name','quantity']].groupby('name')['quantity'].mean()
+    print(x.sort_values(by=['%'],ascending=False))
+    # print(df)
+    # print(x.loc[x['instrument_type'].isin(['shares'])])
+    """
+    for nameOfInstrument in df['name'].explode().unique():
+        quantity = 0
+        average_buy_price = 0
+        expected_yield = 0
+        count = 0
+        for index,item in df.iterrows():
+            # if item["name"] == nameOfInstrument:
+            if item["name"][0] ==  nameOfInstrument:
+                count+=1
+                
+        print("========")
+    """
+    return df
+    # agg({'quantity':'sum', 'average_buy_price':'avg', 'expected_yield':'sum'})
+    # return isinstance(x, pd.DataFrame)
+
+def getMapOfAllFutures(client):
+    instruments: InstrumentsService = client.instruments
+    r = pd.DataFrame(
+        instruments.futures(instrument_status=InstrumentStatus.INSTRUMENT_STATUS_ALL).instruments,
+        columns=['name','figi','ticker','class_code']
+        )
+    return r
+def getFutureInfoByFigi(figi, allFutures):
+    return allFutures[allFutures['figi'] == figi]
+def getFutureNameByFigi(figi, allFutures):
+    r = allFutures[allFutures['figi'] == figi]['name']
+    return list(r)[0]
+
+
+def getMapOfAllCurrencies(client):
+    instruments: InstrumentsService = client.instruments
+    r = pd.DataFrame(
+        instruments.currencies(instrument_status=InstrumentStatus.INSTRUMENT_STATUS_ALL).instruments,
+        columns=['name','figi','ticker','class_code']
+        )
+    return r
+def getCurrencyInfoByFigi(figi, allCurrencies):
+    return allCurrencies[allCurrencies['figi'] == figi]
+def getCurrencyNameByFigi(figi, allCurrencies):
+    r = allCurrencies[allCurrencies['figi'] == figi]['name']
+    return list(r)[0]
+    
+
 def getMapOfAllShares(client):
     instruments: InstrumentsService = client.instruments
     r = pd.DataFrame(
@@ -57,7 +144,8 @@ def getShareInfoByFigi(figi, allShares):
     return allShares[allShares['figi'] == figi]
 def getShareNameByFigi(figi, allShares):
     r = allShares[allShares['figi'] == figi]['name']
-    return list(r)
+    return list(r)[0]
+    
 def getMapOfAllBonds(client):
     instruments: InstrumentsService = client.instruments
     r = pd.DataFrame(
@@ -69,7 +157,8 @@ def getBondInfoByFigi(figi, allBonds):
     return allBonds[allBonds['figi'] == figi]
 def getBondNameByFigi(figi, allBonds):
     r = allBonds[allBonds['figi'] == figi]['name']
-    return list(r)
+    return list(r)[0]
+
 
 def getMapOfAllETFs(client):
     instruments: InstrumentsService = client.instruments
@@ -82,10 +171,11 @@ def getETFInfoByFigi(figi, allETFs):
     return allETFs[allETFs['figi'] == figi]
 def getETFNameByFigi(figi, allETFS):
     r = allETFS[allETFS['figi'] == figi]['name']
-    return list(r)
-def portfolio_pose_todict(p : PortfolioPosition, allShares, allBonds, allETFs):
+    return list(r)[0]
+
+def portfolio_pose_todict(p : PortfolioPosition, allShares, allBonds, allETFs, allCurrencies, allFutures):
     r = {
-        'name': getShareNameByFigi(p.figi, allShares) if p.instrument_type == 'share' else getBondNameByFigi(p.figi, allBonds) if p.instrument_type == 'bond' else getETFNameByFigi(p.figi, allETFs) if p.instrument_type == 'etf' else 'UnknownInstrumentType', 
+        'name': getShareNameByFigi(p.figi, allShares) if p.instrument_type == 'share' else getBondNameByFigi(p.figi, allBonds) if p.instrument_type == 'bond' else getETFNameByFigi(p.figi, allETFs) if p.instrument_type == 'etf' else getCurrencyNameByFigi(p.figi, allCurrencies) if p.instrument_type == 'currency' else getFutureNameByFigi(p.figi, allFutures) if p.instrument_type == 'futures' else 'UnknownInstrumentType_'+p.instrument_type, 
         'figi': p.figi,
         'quantity': cast_money(p.quantity),
         'expected_yield': cast_money(p.expected_yield),
@@ -94,7 +184,7 @@ def portfolio_pose_todict(p : PortfolioPosition, allShares, allBonds, allETFs):
         'currency': p.average_position_price.currency,
         'nkd': cast_money(p.current_nkd),
     }
- 
+    
     """
     if r['currency'] == 'usd':
         # если бы expected_yield быk бы тоже MoneyValue,
@@ -106,15 +196,22 @@ def portfolio_pose_todict(p : PortfolioPosition, allShares, allBonds, allETFs):
     r['sell_sum'] = (r['average_buy_price']*r['quantity']) + r['expected_yield'] + (r['nkd']*r['quantity'])
     r['comission'] = r['sell_sum']*0.003
     r['tax'] = r['expected_yield']*0.013 if r['expected_yield'] > 0 else 0
+    r['investments'] = r['average_buy_price']*r['quantity']
     r['%'] = r['expected_yield'] / (r['average_buy_price']*r['quantity']) * 100 if (r['average_buy_price']*r['quantity'])!=0 else 0
- 
+    
     return r
 
+def getCurrentPrice(quantity, average_buy_price, expected_yield):
+    # return r['average_buy_price']*r['quantity']) + r['expected_yield']
+    return (average_buy_price*quantity + expected_yield)/quantity if quantity>0 else -1
+
 def getAccounts(client):
-  r : GetAccountsResponse = client.users.get_accounts()
-  df = pd.DataFrame([{'id': p.id, 'name': p.name
-  } for p in r.accounts])
-  print(df)
+    r : GetAccountsResponse = client.users.get_accounts()
+    df = pd.DataFrame([{'id': p.id, 'name': p.name
+    } for p in r.accounts])
+    #   print(df)
+    return df
+
 """
 Accounts:
             id                         name
@@ -130,6 +227,7 @@ Accounts:
 9   2111497117                    Удалить 5
 10  2111378143              Открытие Брокер
 11  2111713042          Коган Второй эшелон
+
 """
 
 def cast_money(v):
