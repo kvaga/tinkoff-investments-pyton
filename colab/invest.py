@@ -24,9 +24,9 @@ def run(spreadsheetId):
  
     try:
         with Client(os.environ['TINKOFF_TOKEN_RO']) as client:
-            for acc in getAccounts(client):
-                print(acc['liquid_portfolio'])
-            return
+            # for acc in getAccounts(client):
+                # print(acc['liquid_portfolio'])
+            # return
             print('Getting all maps from tinkoff API...')
             allShares=getMapOfAllShares(client)
             allBonds = getMapOfAllBonds(client)
