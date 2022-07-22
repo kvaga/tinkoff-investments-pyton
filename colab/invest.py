@@ -1,4 +1,12 @@
 from tinkoff.invest import Client, RequestError, PortfolioResponse, PositionsResponse, PortfolioPosition, InstrumentStatus
+import sys
+# https://habr.com/en/post/483302/
+from googleapiclient.discovery import build
+
+import httplib2 
+import apiclient.discovery
+from oauth2client.service_account import ServiceAccountCredentials
+
 import pandas as pd
 import os
 pd.set_option('display.max_rows', 500)
@@ -12,10 +20,12 @@ https://tinkoff.github.io/investAPI/operations/#portfoliorequest
 https://tinkoff.github.io/investAPI
 https://github.com/Tinkoff/invest-python
 """
-def run():        
+def run(spreadsheetId):        
  
     try:
         with Client(os.environ['TINKOFF_TOKEN_RO']) as client:
+            # return
+            print('Getting all maps from tinkoff API...')
             allShares=getMapOfAllShares(client)
             allBonds = getMapOfAllBonds(client)
             allEtfs = getMapOfAllETFs(client)
@@ -31,6 +41,7 @@ def run():
             #print(getShareNameByFigi('BBG0136BTL03', allShares))
             #getAccounts(client)
             # return
+            print('Getting instruments from tinkoff api')
             """
             # т.к. есть валятные активы (у меня etf), то нужно их отконвертить в рубли
             # я работаю только в долл, вам возможно будут нужны и др валюты
@@ -66,7 +77,7 @@ def run():
             # print(commonDataframe.sort_values(by=['%'],ascending=False))
             # print(pd.concat(commonDataframe).sort_values(by=['%'],ascending=False))
             # print(getYieldByInstruments(pd.concat(commonDataframe)))
-            getYieldByInstruments(pd.concat(commonDataframe))
+            send2GoogleSpreadSheet(getYieldByInstruments(pd.concat(commonDataframe)),spreadsheetId)
             # print(getYieldByInstruments(commonDataframe))
                         
             """
@@ -78,14 +89,101 @@ def run():
     except RequestError as e:
         print(str(e))
 
+def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
+    GOOGLE_SHEETS_CREDENTIALS_FILE = os.environ['GOOGLE_PROJECT_CREDENTIALS_FILE_PATH']  # Имя файла с закрытым ключом, вы должны подставить свое
+    # Читаем ключи из файла
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_SHEETS_CREDENTIALS_FILE, 
+                                                                   ['https://www.googleapis.com/auth/spreadsheets', 
+                                                                    'https://www.googleapis.com/auth/drive'])
+    print("Auth process in Google Sheets")
+    httpAuth = credentials.authorize(httplib2.Http()) # Авторизуемся в системе
+    service = apiclient.discovery.build('sheets', 'v4', http = httpAuth) # Выбираем работу с таблицами и 4 версию API 
+    print("service: ")
+    if( not existingSpreadSheeId):
+        print("Creating google sheet file...")
+        spreadsheet = service.spreadsheets().create(body = {
+            'properties': {'title': 'Первый тестовый документ', 'locale': 'ru_RU'},
+            'sheets': [{'properties': {'sheetType': 'GRID',
+                                    'sheetId': 0,
+                                    'title': 'Лист номер один',
+                                    'gridProperties': {'rowCount': 100, 'columnCount': 15}}}]
+        }).execute()
+        print('Created spreadsheet with id: ', spreadsheet['spreadsheetId'])
+        spreadsheet_Id = spreadsheet['spreadsheetId']
+    else:
+        spreadsheet_Id = existingSpreadSheeId #spreadsheet['spreadsheetId'] # сохраняем идентификатор файла
+    print("Google Sheet URL: ",'https://docs.google.com/spreadsheets/d/' + spreadsheet_Id)
+    
+    """
+    print("Starting grant access")
+    driveService = apiclient.discovery.build('drive', 'v3', http = httpAuth) # Выбираем работу с Google Drive и 3 версию API
+    access = driveService.permissions().create(
+        fileId = spreadsheet_Id,
+        body = {'type': 'user', 'role': 'writer', 'emailAddress': 'kvagalex@gmail.com'},  # Открываем доступ на редактирование
+        fields = 'id'
+    ).execute()
+    """
+    # Аутентификация юзера для доступа к электронной таблице Google Sheet
+    # auth.authenticate_user()
+    # service = build('sheets', 'v4', cache_discovery=False)
+    # r = service.spreadsheets().values().get(spreadsheetId=spreadsheet_Id, range="Популярное!A1:A999").execute()
+    
+    print("Replacing NaN values in a dataframe before saving to google sheet...")
+    # data=data.dropna()
+    # data=data.dropna(axis=0)
+    data.fillna("NaNo", inplace = True)
+    
+    # print("---------------------")
+    # print(data.to_string())
+    # print(data.describe())
+    # print("Head: ", data.head)
+    # print("Colums: ", data.columns)
+    print("Filling google sheet with values...")
+    values = []
+    values.append(['name','currency','instrument_type','quantity', 'average_buy_price', 'expected_yield', 'investments', '%Yield'])
+    for index, row in data.iterrows():
+        # row = k.tolist()
+        # print("===")
+        # print(row)
+        # print("###")
+        # print(row['name'])
+        # print("---")
+        
+        values.append([\
+                    row['name'], \
+                    row['currency'], \
+                    row['instrument_type'], \
+                    row['quantity'], \
+                    row['average_buy_price'], \
+                    row['expected_yield'], \
+                    row['investments'], \
+                    row['%Yield']\
+                    ])
+        
+
+    
+    body = {
+        'valueInputOption' : 'RAW',
+        'data' : [
+            {'range' : 'Лист номер один', 'values' : values},
+        ]
+    }
+
+    r = service.spreadsheets().values().batchUpdate(spreadsheetId=spreadsheet_Id, body=body).execute()
+
 def getYieldByInstruments(dFrame):
     df = dFrame[['name', 'quantity', 'average_buy_price', 'currency', 'instrument_type', 'expected_yield', 'investments']]
-    x = df.groupby(['name', 'currency', 'instrument_type']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum'})
+    # x = df.groupby(['name']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum'})
+    x = df.groupby(['name' , 'currency', 'instrument_type']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum'})
     x['average_buy_price'] = x['investments'] / x['quantity']
-    x['%'] = (x['expected_yield'] / x['investments'])  * 100 
+    x['%Yield'] = (x['expected_yield'] / x['investments'])  * 100 
+    x = x.rename(columns={'name': 'count'})
+    x = x.reset_index()
+    # x['name'] = list(x['name'])[0]
     # print(dFrame)
     # x = dFrame[['name','quantity']].groupby('name')['quantity'].mean()
-    print(x.sort_values(by=['%'],ascending=False))
+    print(x.sort_values(by=['%Yield'],ascending=False))
+    # print(x.loc[:, x.isna().any()]) # только те колонки: что содержат Nan
     # print(df)
     # print(x.loc[x['instrument_type'].isin(['shares'])])
     """
@@ -101,7 +199,8 @@ def getYieldByInstruments(dFrame):
                 
         print("========")
     """
-    return df
+    
+    return x.sort_values(by=['%Yield'],ascending=False)
     # agg({'quantity':'sum', 'average_buy_price':'avg', 'expected_yield':'sum'})
     # return isinstance(x, pd.DataFrame)
 
@@ -198,7 +297,6 @@ def portfolio_pose_todict(p : PortfolioPosition, allShares, allBonds, allETFs, a
     r['tax'] = r['expected_yield']*0.013 if r['expected_yield'] > 0 else 0
     r['investments'] = r['average_buy_price']*r['quantity']
     r['%'] = r['expected_yield'] / (r['average_buy_price']*r['quantity']) * 100 if (r['average_buy_price']*r['quantity'])!=0 else 0
-    
     return r
 
 def getCurrentPrice(quantity, average_buy_price, expected_yield):
@@ -238,5 +336,11 @@ def cast_money(v):
     """
     return v.units + v.nano / 1e9 # nano - 9 нулей
 
+def loadCredentilas(runfile):
+    with open(runfile,"r") as rnf:
+        exec(rnf.read())
+    print('GOOGLE_PROJECT_CREDENTIALS_FILE_PATH: ', os.environ['GOOGLE_PROJECT_CREDENTIALS_FILE_PATH'])
+
 if __name__ == "__main__":
-  run()
+    loadCredentilas(sys.argv[1])
+    run(spreadsheetId=os.environ['GOOGLE_SPREADSHEET_ID'])
