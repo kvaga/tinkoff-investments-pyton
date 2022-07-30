@@ -1,4 +1,5 @@
-from tinkoff.invest import Client, RequestError, PortfolioResponse, PositionsResponse, PortfolioPosition, InstrumentStatus
+from ctypes import cast
+from tinkoff.invest import Client, RequestError, PortfolioResponse, PositionsResponse, PortfolioPosition, InstrumentStatus, GetMarginAttributesResponse, GetLastPricesResponse
 import sys
 # https://habr.com/en/post/483302/
 from googleapiclient.discovery import build
@@ -6,6 +7,7 @@ from googleapiclient.discovery import build
 import httplib2 
 import apiclient.discovery
 from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
 
 import pandas as pd
 import os
@@ -13,7 +15,65 @@ pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
  
- 
+
+def getFullAmountOfInvestmentsInRub(\
+                                    data, 
+                                    usdrur, hkdrur, cnyrur, eurrur, 
+                                    rublesPerAccount \
+                                    ):
+    print('Getting full amount of investments...')
+    data.fillna("NaNo", inplace = True)
+    fullAmount=0
+    count=0
+    print('')
+    for index, row in data.iterrows():
+        count+=1
+        print('name: "', row['name'], '", expected_yield: ', row['expected_yield'], ', investments: ', row['investments'], ', currency: ', row['currency'], ', expected_yield: ',row['expected_yield'])
+        # print(row)
+        if row['instrument_type'] == 'futures' or row['instrument_type'] == 'currency':
+            print('Skipped future or currency: ' + row['name'])
+            continue
+        if row['currency'] == 'rub':
+            """
+            if row['name'].strip() == 'USDRUBF Доллар - Рубль':
+                fullAmount+=(row['expected_yield']+row['investments']*1000) # todo: добавить запрос стоимость пункта цены для фьючерсов
+            else:
+                fullAmount+=(row['expected_yield']+row['investments'])
+            """
+            fullAmount+=(row['expected_yield']+row['investments'])
+            print('[RUB] ',row['name'], ': ', (row['expected_yield']+row['investments']))
+            # print(row)
+            
+        elif row['currency'] == 'usd':
+            fullAmount+=(row['expected_yield']+row['investments'])*usdrur
+            print('[USD] ',row['name'], ': ', (row['expected_yield']+row['investments'])*usdrur)
+        elif row['currency'] == 'cny':
+            fullAmount+=(row['expected_yield']+row['investments'])*cnyrur
+            print('[CNY] ',row['name'], ': ', (row['expected_yield']+row['investments'])*cnyrur)
+        elif row['currency'] == 'eur':
+            fullAmount+=(row['expected_yield']+row['investments'])*eurrur
+            print('[EUR] ',row['name'], ': ', (row['expected_yield']+row['investments'])*eurrur)
+        elif row['currency'] == 'hkd':
+            fullAmount+=(row['expected_yield']+row['investments'])*hkdrur
+            print('[HKD] ',row['name'], ': ', (row['expected_yield']+row['investments'])*hkdrur)
+        else:
+            print('[Unknown currency]: ', row['currency'])
+    for rub in rublesPerAccount:
+        print('[RUB] Amount: ', rub['amount'])
+        fullAmount+=rub['amount']
+        count+=1
+    print('FullAmount: ', fullAmount)
+    print('Count: ', count)
+    return fullAmount
+def getTimestamp():
+    return datetime.timestamp(datetime.now())
+def getDateTime():
+    # Getting the current date and time
+    dt = datetime.now()
+    # getting the timestamp
+    # ts = datetime.timestamp(dt)
+    # print("Date and time is:", dt)
+    return dt.strftime("%Y.%m.%d %H:%M:%S")
 """
 Для видео по get_portfolio
 https://tinkoff.github.io/investAPI/operations/#portfoliorequest
@@ -24,9 +84,6 @@ def run(spreadsheetId):
  
     try:
         with Client(os.environ['TINKOFF_TOKEN_RO']) as client:
-            # for acc in getAccounts(client):
-                # print(acc['liquid_portfolio'])
-            # return
             print('Getting all maps from tinkoff API...')
             allShares=getMapOfAllShares(client)
             allBonds = getMapOfAllBonds(client)
@@ -35,6 +92,7 @@ def run(spreadsheetId):
             allFutures = getMapOfAllFutures(client)
 
             commonDataframe = []
+            rublesPerAccount = []
             # commonDataframe = pd.DataFrame(columns=['name', 'quantity', 'average_buy_price', 'currency', 'instrument_type', 'expected_yield'])
             # BBG012C34FX0
             #print(allShares)
@@ -43,33 +101,61 @@ def run(spreadsheetId):
             #print(getShareNameByFigi('BBG0136BTL03', allShares))
             #getAccounts(client)
             # return
-            print('Getting instruments from tinkoff api')
-            """
+            print('Getting instruments from tinkoff api...')
+            
+            
             # т.к. есть валятные активы (у меня etf), то нужно их отконвертить в рубли
             # я работаю только в долл, вам возможно будут нужны и др валюты
-            u = client.market_data.get_last_prices(figi=['USD000UTSTOM'])
+            # Доллар США :  BBG0013HGFT4
+            # Гонконгский доллар :  BBG0013HSW87
+            # Евро :  BBG0013HJJ31
+            # Юань :  BBG0013HRTL0
+            # u = client.market_data.get_last_prices(figi=['USD000UTSTOM'])
+            r: GetLastPricesResponse = client.market_data.get_last_prices()
+            # u = pd.DataFrame([p.LastPrice[] for p in r.last_prices])
+            # print(u)
+            # u = u[figi=['BBG0013HGFT4']]
+            u = client.market_data.get_last_prices(figi=['BBG0013HGFT4'])
             usdrur = cast_money(u.last_prices[0].price)
-            """
+            u = client.market_data.get_last_prices(figi=['BBG0013HSW87'])
+            hkdrur = cast_money(u.last_prices[0].price)
+            u = client.market_data.get_last_prices(figi=['BBG0013HJJ31'])
+            eurrur = cast_money(u.last_prices[0].price)
+            u = client.market_data.get_last_prices(figi=['BBG0013HRTL0'])
+            cnyrur = cast_money(u.last_prices[0].price)
+            print('usdrur: ', usdrur)
+            print('hkdrur: ', hkdrur)
+            print('eurrur: ', eurrur)
+            print('cnyrur: ', cnyrur)            
+            
             for x in [\
                         '2111522740', #             Маржиналка лонг /
                         '2111426330', #             Маржиналка шорт /
                         '2090759289', #                       Коган /
                         '2000079539', #                         Мой /
                         '2038244386', #                         ИИС /
-                        # '2036073431', #               Инвесткопилка /
                         '2111421018', # Не выводить - налог большой /
                         '2111427718', #          ВТБ Мои Инвестиции /
                         '2111450124', #        Коган Товарные рынки /
                         '2111497117', #                   Удалить 5 /
                         '2111378143', #             Открытие Брокер /
-                        '2111713042', #         Коган Второй эшелон /
                     ]: 
                 # print(x)
                 r : PortfolioResponse = client.operations.get_portfolio(account_id=x)
                 df = pd.DataFrame([portfolio_pose_todict(p, allShares, allBonds, allEtfs, allCurrencies, allFutures) for p in r.positions])
-                # print(df)
                 # commonDataframe.append(df)
                 #
+                # print('accountId: ', x, 'totalAmountCurrencies: ', cast_money(r.total_amount_currencies))
+                # rublesPerAccount.append({'accountId': x,'amount': cast_money(r.total_amount_currencies)})
+                rublesPerAccount.append({'accountId': x,'amount': cast_money(r.total_amount_currencies)})
+                """
+
+                # Get all currencies from accounts
+                df = df.reset_index()
+                for index,k in df.iterrows():
+                    if k['instrument_type'] == 'currency':
+                        print(k['name'],': ',k['figi'])
+                """
                 commonDataframe.append(df)
                 # pd.concat([commonDataframe,df], ignore_index=True)
                 #
@@ -79,7 +165,14 @@ def run(spreadsheetId):
             # print(commonDataframe.sort_values(by=['%'],ascending=False))
             # print(pd.concat(commonDataframe).sort_values(by=['%'],ascending=False))
             # print(getYieldByInstruments(pd.concat(commonDataframe)))
-            send2GoogleSpreadSheet(getYieldByInstruments(pd.concat(commonDataframe)),spreadsheetId)
+            
+            fullAmountOfInvestmentsInRubles = getFullAmountOfInvestmentsInRub(
+                                            pd.concat(commonDataframe), 
+                                            usdrur, hkdrur, cnyrur, eurrur,
+                                            rublesPerAccount
+                                            )
+            # return
+            send2GoogleSpreadSheet(getYieldByInstruments(pd.concat(commonDataframe), fullAmountOfInvestmentsInRubles),spreadsheetId)
             # print(getYieldByInstruments(commonDataframe))
                         
             """
@@ -90,6 +183,18 @@ def run(spreadsheetId):
  
     except RequestError as e:
         print(str(e))
+
+def getMarginAccountInfo():
+    for index, acc in getAccounts(client).iterrows():
+        try:
+            print("--> '", acc['id'],'\'')
+            r : GetMarginAttributesResponse = client.users.get_margin_attributes(account_id=acc['id'])
+            print(acc['name'],': ', cast_money(r.liquid_portfolio))
+        except RequestError as err:
+            print('Error on account id: ', acc['id'], '. Error: ', err)
+        except:
+            print('Unknown error on account id: ', acc['id'])
+        return
 
 def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
     GOOGLE_SHEETS_CREDENTIALS_FILE = os.environ['GOOGLE_PROJECT_CREDENTIALS_FILE_PATH']  # Имя файла с закрытым ключом, вы должны подставить свое
@@ -121,7 +226,7 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
     driveService = apiclient.discovery.build('drive', 'v3', http = httpAuth) # Выбираем работу с Google Drive и 3 версию API
     access = driveService.permissions().create(
         fileId = spreadsheet_Id,
-        body = {'type': 'user', 'role': 'writer', 'emailAddress': 'kvagalex@gmail.com'},  # Открываем доступ на редактирование
+        body = {'type': 'user', 'role': 'writer', 'emailAddress': '***@gmail.com'},  # Открываем доступ на редактирование
         fields = 'id'
     ).execute()
     """
@@ -142,7 +247,7 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
     # print("Colums: ", data.columns)
     print("Filling google sheet with values...")
     values = []
-    values.append(['name','currency','instrument_type','quantity', 'average_buy_price', 'expected_yield', 'investments', '%Yield'])
+    values.append(['name ('+getDateTime()+')','currency','instrument_type','quantity', 'average_buy_price', 'expected_yield', 'investments', '%Yield', '%FromTotalInvestments'])
     for index, row in data.iterrows():
         # row = k.tolist()
         # print("===")
@@ -159,7 +264,8 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
                     row['average_buy_price'], \
                     row['expected_yield'], \
                     row['investments'], \
-                    row['%Yield']\
+                    row['%Yield'],\
+                    row['%FromTotalInvestments']
                     ])
         
 
@@ -173,18 +279,20 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
 
     r = service.spreadsheets().values().batchUpdate(spreadsheetId=spreadsheet_Id, body=body).execute()
 
-def getYieldByInstruments(dFrame):
+def getYieldByInstruments(dFrame, fullAmountOfInvestmentsInRubles):
+    print("Getting yield...")
     df = dFrame[['name', 'quantity', 'average_buy_price', 'currency', 'instrument_type', 'expected_yield', 'investments']]
     # x = df.groupby(['name']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum'})
     x = df.groupby(['name' , 'currency', 'instrument_type']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum'})
     x['average_buy_price'] = x['investments'] / x['quantity']
-    x['%Yield'] = (x['expected_yield'] / x['investments'])  * 100 
+    x['%Yield'] = (x['expected_yield'] / x['investments'])  * 100
+    x['%FromTotalInvestments'] = (x['investments'] + x['expected_yield'])/fullAmountOfInvestmentsInRubles*100
     x = x.rename(columns={'name': 'count'})
     x = x.reset_index()
     # x['name'] = list(x['name'])[0]
     # print(dFrame)
     # x = dFrame[['name','quantity']].groupby('name')['quantity'].mean()
-    print(x.sort_values(by=['%Yield'],ascending=False))
+    # print(x.sort_values(by=['%Yield'],ascending=False))
     # print(x.loc[:, x.isna().any()]) # только те колонки: что содержат Nan
     # print(df)
     # print(x.loc[x['instrument_type'].isin(['shares'])])
@@ -286,6 +394,8 @@ def portfolio_pose_todict(p : PortfolioPosition, allShares, allBonds, allETFs, a
         'nkd': cast_money(p.current_nkd),
     }
     
+    # print('p.average_position_price: ', p.average_position_price)
+    # print('cast_money: ', cast_money(p.average_position_price))
     """
     if r['currency'] == 'usd':
         # если бы expected_yield быk бы тоже MoneyValue,
@@ -312,23 +422,6 @@ def getAccounts(client):
     #   print(df)
     return df
 
-"""
-Accounts:
-            id                         name
-0   2111522740              Маржиналка лонг
-1   2111426330              Маржиналка шорт
-2   2090759289                        Коган
-3   2000079539                          Мой
-4   2038244386                          ИИС
-5   2036073431                Инвесткопилка
-6   2111421018  Не выводить - налог большой
-7   2111427718           ВТБ Мои Инвестиции
-8   2111450124         Коган Товарные рынки
-9   2111497117                    Удалить 5
-10  2111378143              Открытие Брокер
-11  2111713042          Коган Второй эшелон
-
-"""
 
 def cast_money(v):
     """
