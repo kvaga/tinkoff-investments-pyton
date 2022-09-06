@@ -25,6 +25,8 @@ def getFullAmountOfInvestmentsInRub(\
     data.fillna("NaNo", inplace = True)
     fullAmount=0
     count=0
+    amountOfUSD=0; amountOfRUB=0; amountOfCNY=0; amountOfHKD=0; amountOfEUR=0; amountOfOther=0
+
     print('')
     for index, row in data.iterrows():
         count+=1
@@ -41,29 +43,44 @@ def getFullAmountOfInvestmentsInRub(\
                 fullAmount+=(row['expected_yield']+row['investments'])
             """
             fullAmount+=(row['expected_yield']+row['investments'])
+            amountOfRUB+=row['expected_yield']+row['investments']
             print('[RUB] ',row['name'], ': ', (row['expected_yield']+row['investments']))
             # print(row)
             
         elif row['currency'] == 'usd':
             fullAmount+=(row['expected_yield']+row['investments'])*usdrur
+            amountOfUSD+=(row['expected_yield']+row['investments'])
             print('[USD] ',row['name'], ': ', (row['expected_yield']+row['investments'])*usdrur)
         elif row['currency'] == 'cny':
             fullAmount+=(row['expected_yield']+row['investments'])*cnyrur
+            amountOfCNY+=row['expected_yield']+row['investments']
             print('[CNY] ',row['name'], ': ', (row['expected_yield']+row['investments'])*cnyrur)
         elif row['currency'] == 'eur':
             fullAmount+=(row['expected_yield']+row['investments'])*eurrur
+            amountOfEUR+=row['expected_yield']+row['investments']
             print('[EUR] ',row['name'], ': ', (row['expected_yield']+row['investments'])*eurrur)
         elif row['currency'] == 'hkd':
             fullAmount+=(row['expected_yield']+row['investments'])*hkdrur
+            amountOfHKD+=row['expected_yield']+row['investments']
             print('[HKD] ',row['name'], ': ', (row['expected_yield']+row['investments'])*hkdrur)
         else:
+            amountOfOther+=row['expected_yield']+row['investments']
             print('[Unknown currency]: ', row['currency'])
     for rub in rublesPerAccount:
         print('[RUB] Amount: ', rub['amount'])
         fullAmount+=rub['amount']
         count+=1
-    print('FullAmount: ', fullAmount)
-    print('Count: ', count)
+    print('Total Investments Amount in Rubles: ', fullAmount)
+    print('--  RUB  --> ', amountOfRUB)
+    print('--  USD  --> ', amountOfUSD)
+    print('--  EUR  --> ', amountOfEUR)
+    print('--  HKD  --> ', amountOfHKD)
+    print('--  CNY  --> ', amountOfCNY)
+    print('-- Other --> ', amountOfOther)
+    print()
+
+
+    print('Total Count Of Instruments: ', count)
     return fullAmount
 def getTimestamp():
     return datetime.timestamp(datetime.now())
@@ -247,7 +264,7 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
     # print("Colums: ", data.columns)
     print("Filling google sheet with values...")
     values = []
-    values.append(['name ('+getDateTime()+')','currency','instrument_type','quantity', 'average_buy_price', 'expected_yield', 'investments', '%Yield', '%FromTotalInvestments'])
+    values.append(['name ('+getDateTime()+')','currency','instrument_type','quantity', 'average_buy_price', 'expected_yield', 'investments', '%Yield', '%FromTotalInvestments','ticker'])
     for index, row in data.iterrows():
         # row = k.tolist()
         # print("===")
@@ -265,7 +282,8 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
                     row['expected_yield'], \
                     row['investments'], \
                     row['%Yield'],\
-                    row['%FromTotalInvestments']
+                    row['%FromTotalInvestments'],
+                    row['ticker']
                     ])
         
 
@@ -281,9 +299,9 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
 
 def getYieldByInstruments(dFrame, fullAmountOfInvestmentsInRubles):
     print("Getting yield...")
-    df = dFrame[['name', 'quantity', 'average_buy_price', 'currency', 'instrument_type', 'expected_yield', 'investments']]
+    df = dFrame[['name', 'ticker', 'quantity', 'average_buy_price', 'currency', 'instrument_type', 'expected_yield', 'investments']]
     # x = df.groupby(['name']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum'})
-    x = df.groupby(['name' , 'currency', 'instrument_type']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum'})
+    x = df.groupby(['name' , 'ticker', 'currency', 'instrument_type']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum'})
     x['average_buy_price'] = x['investments'] / x['quantity']
     x['%Yield'] = (x['expected_yield'] / x['investments'])  * 100
     x['%FromTotalInvestments'] = (x['investments'] + x['expected_yield'])/fullAmountOfInvestmentsInRubles*100
@@ -354,6 +372,10 @@ def getShareInfoByFigi(figi, allShares):
 def getShareNameByFigi(figi, allShares):
     r = allShares[allShares['figi'] == figi]['name']
     return list(r)[0]
+
+def getCommonInstrumetTickerByFigi(figi, instruments):
+    r = instruments[instruments['figi'] == figi]['ticker']
+    return list(r)[0]
     
 def getMapOfAllBonds(client):
     instruments: InstrumentsService = client.instruments
@@ -386,6 +408,7 @@ def portfolio_pose_todict(p : PortfolioPosition, allShares, allBonds, allETFs, a
     r = {
         'name': getShareNameByFigi(p.figi, allShares) if p.instrument_type == 'share' else getBondNameByFigi(p.figi, allBonds) if p.instrument_type == 'bond' else getETFNameByFigi(p.figi, allETFs) if p.instrument_type == 'etf' else getCurrencyNameByFigi(p.figi, allCurrencies) if p.instrument_type == 'currency' else getFutureNameByFigi(p.figi, allFutures) if p.instrument_type == 'futures' else 'UnknownInstrumentType_'+p.instrument_type, 
         'figi': p.figi,
+        'ticker': getCommonInstrumetTickerByFigi(p.figi, allShares) if p.instrument_type == 'share' else getCommonInstrumetTickerByFigi(p.figi, allBonds) if p.instrument_type == 'bond' else getCommonInstrumetTickerByFigi(p.figi, allETFs) if p.instrument_type == 'etf' else getCommonInstrumetTickerByFigi(p.figi, allCurrencies) if p.instrument_type == 'currency' else getCommonInstrumetTickerByFigi(p.figi, allFutures) if p.instrument_type == 'futures' else 'UnknownInstrumentType_'+p.instrument_type,
         'quantity': cast_money(p.quantity),
         'expected_yield': cast_money(p.expected_yield),
         'instrument_type': p.instrument_type,
