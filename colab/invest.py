@@ -3,6 +3,7 @@ from tinkoff.invest import Client, RequestError, PortfolioResponse, PositionsRes
 import sys
 # https://habr.com/en/post/483302/
 from googleapiclient.discovery import build
+import moex
 
 import httplib2 
 import apiclient.discovery
@@ -97,7 +98,7 @@ https://tinkoff.github.io/investAPI/operations/#portfoliorequest
 https://tinkoff.github.io/investAPI
 https://github.com/Tinkoff/invest-python
 """
-def run(spreadsheetId):        
+def run(yieldsOfAllBonds, spreadsheetId):        
  
     try:
         with Client(os.environ['TINKOFF_TOKEN_RO']) as client:
@@ -157,6 +158,7 @@ def run(spreadsheetId):
                         '2111497117', #                   Удалить 5 /
                         '2111378143', #             Открытие Брокер /
                     ]: 
+                
                 # print(x)
                 r : PortfolioResponse = client.operations.get_portfolio(account_id=x)
                 df = pd.DataFrame([portfolio_pose_todict(p, allShares, allBonds, allEtfs, allCurrencies, allFutures) for p in r.positions])
@@ -189,7 +191,8 @@ def run(spreadsheetId):
                                             rublesPerAccount
                                             )
             # return
-            send2GoogleSpreadSheet(getYieldByInstruments(pd.concat(commonDataframe), fullAmountOfInvestmentsInRubles),spreadsheetId)
+            
+            send2GoogleSpreadSheet(getYieldByInstruments(pd.concat(commonDataframe), fullAmountOfInvestmentsInRubles, yieldsOfAllBonds),spreadsheetId)
             # print(getYieldByInstruments(commonDataframe))
                         
             """
@@ -229,7 +232,7 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
             'properties': {'title': 'Первый тестовый документ', 'locale': 'ru_RU'},
             'sheets': [{'properties': {'sheetType': 'GRID',
                                     'sheetId': 0,
-                                    'title': 'Лист номер один',
+                                    'title': 'INVESTMENTS ALL',
                                     'gridProperties': {'rowCount': 100, 'columnCount': 15}}}]
         }).execute()
         print('Created spreadsheet with id: ', spreadsheet['spreadsheetId'])
@@ -264,7 +267,7 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
     # print("Colums: ", data.columns)
     print("Filling google sheet with values...")
     values = []
-    values.append(['name ('+getDateTime()+')','currency','instrument_type','quantity', 'average_buy_price', 'expected_yield', 'investments', '%Yield', '%FromTotalInvestments','ticker'])
+    values.append(['name ('+getDateTime()+')','currency','instrument_type','quantity', 'average_buy_price', 'expected_yield', 'investments', '%Yield', '%FromTotalInvestments','ticker', 'yield_of_bond'])
     for index, row in data.iterrows():
         # row = k.tolist()
         # print("===")
@@ -272,7 +275,7 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
         # print("###")
         # print(row['name'])
         # print("---")
-        
+        # print('QQQ: ' + row['yield_of_bond'])
         values.append([\
                     row['name'], \
                     row['currency'], \
@@ -282,8 +285,9 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
                     row['expected_yield'], \
                     row['investments'], \
                     row['%Yield'],\
-                    row['%FromTotalInvestments'],
-                    row['ticker']
+                    row['%FromTotalInvestments'],\
+                    row['ticker'],\
+                    row['yield_of_bond']
                     ])
         
 
@@ -297,14 +301,29 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
 
     r = service.spreadsheets().values().batchUpdate(spreadsheetId=spreadsheet_Id, body=body).execute()
 
-def getYieldByInstruments(dFrame, fullAmountOfInvestmentsInRubles):
+def addYieldForBondsToDataframe(dFrame, yieldsOfAllBonds):
+    for index, row_ in dFrame.iterrows():
+           dFrame.at[index,'yield_of_bond'] = moex.loadYieldOfBondByTicker(row_['ticker'], yieldsOfAllBonds)
+def makeLinksForGoogleSheetsCells(dFrame,):
+    for index, row_ in dFrame.iterrows():
+        value = "\"userEnteredValue\": {\"formulaValue\":\"=HYPERLINK(\"https://www.tinkoff.ru/invest/"+('futures' if row_['instrument_type']=='futures' else 'bonds' if row_['instrument_type']=='bond' else 'shares' if row_['instrument_type']=='share' else 'currencies' if row_['instrument_type']=='currency' else '') +"/"+row_['ticker']+"/\"; \""+row_['name']+"\")\"}"
+        dFrame.at[index,'name'] = value
+        print(value)
+def getYieldByInstruments(dFrame, fullAmountOfInvestmentsInRubles, yieldsOfAllBonds):
     print("Getting yield...")
-    df = dFrame[['name', 'ticker', 'quantity', 'average_buy_price', 'currency', 'instrument_type', 'expected_yield', 'investments']]
+    # print('$$$ ' + dFrame['ticker'])
+    # print('q: ' + dFrame['yield_of_bond'])
+    #_row['ticker'] and dFrame['instrument_type'] == 'bond' else 'Not a bond'
+    # print(dFrame['yield_of_bond'])
+    addYieldForBondsToDataframe(dFrame, yieldsOfAllBonds)
+    # makeLinksForGoogleSheetsCells(dFrame)
+    df = dFrame[['name', 'ticker', 'quantity', 'average_buy_price', 'currency', 'instrument_type', 'expected_yield', 'investments', 'yield_of_bond']]
     # x = df.groupby(['name']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum'})
-    x = df.groupby(['name' , 'ticker', 'currency', 'instrument_type']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum'})
+    x = df.groupby(['name' , 'ticker', 'currency', 'instrument_type']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum', 'yield_of_bond': 'mean'})
     x['average_buy_price'] = x['investments'] / x['quantity']
     x['%Yield'] = (x['expected_yield'] / x['investments'])  * 100
     x['%FromTotalInvestments'] = (x['investments'] + x['expected_yield'])/fullAmountOfInvestmentsInRubles*100
+    
     x = x.rename(columns={'name': 'count'})
     x = x.reset_index()
     # x['name'] = list(x['name'])[0]
@@ -404,17 +423,20 @@ def getETFNameByFigi(figi, allETFS):
     r = allETFS[allETFS['figi'] == figi]['name']
     return list(r)[0]
 
+
 def portfolio_pose_todict(p : PortfolioPosition, allShares, allBonds, allETFs, allCurrencies, allFutures):
+    ticker = getCommonInstrumetTickerByFigi(p.figi, allShares) if p.instrument_type == 'share' else getCommonInstrumetTickerByFigi(p.figi, allBonds) if p.instrument_type == 'bond' else getCommonInstrumetTickerByFigi(p.figi, allETFs) if p.instrument_type == 'etf' else getCommonInstrumetTickerByFigi(p.figi, allCurrencies) if p.instrument_type == 'currency' else getCommonInstrumetTickerByFigi(p.figi, allFutures) if p.instrument_type == 'futures' else 'UnknownInstrumentType_'+p.instrument_type;
     r = {
         'name': getShareNameByFigi(p.figi, allShares) if p.instrument_type == 'share' else getBondNameByFigi(p.figi, allBonds) if p.instrument_type == 'bond' else getETFNameByFigi(p.figi, allETFs) if p.instrument_type == 'etf' else getCurrencyNameByFigi(p.figi, allCurrencies) if p.instrument_type == 'currency' else getFutureNameByFigi(p.figi, allFutures) if p.instrument_type == 'futures' else 'UnknownInstrumentType_'+p.instrument_type, 
         'figi': p.figi,
-        'ticker': getCommonInstrumetTickerByFigi(p.figi, allShares) if p.instrument_type == 'share' else getCommonInstrumetTickerByFigi(p.figi, allBonds) if p.instrument_type == 'bond' else getCommonInstrumetTickerByFigi(p.figi, allETFs) if p.instrument_type == 'etf' else getCommonInstrumetTickerByFigi(p.figi, allCurrencies) if p.instrument_type == 'currency' else getCommonInstrumetTickerByFigi(p.figi, allFutures) if p.instrument_type == 'futures' else 'UnknownInstrumentType_'+p.instrument_type,
+        'ticker': ticker,
         'quantity': cast_money(p.quantity),
         'expected_yield': cast_money(p.expected_yield),
         'instrument_type': p.instrument_type,
         'average_buy_price': cast_money(p.average_position_price),
         'currency': p.average_position_price.currency,
         'nkd': cast_money(p.current_nkd),
+        'yield_of_bond': ''
     }
     
     # print('p.average_position_price: ', p.average_position_price)
@@ -460,5 +482,7 @@ def loadCredentilas(runfile):
     print('GOOGLE_PROJECT_CREDENTIALS_FILE_PATH: ', os.environ['GOOGLE_PROJECT_CREDENTIALS_FILE_PATH'])
 
 if __name__ == "__main__":
+    yieldOfAllBonds = moex.loadYieldsOfAllBonds();
+    # print(moex.loadyield_of_bondByTicker('XS2157526315', bondsInfo))
     loadCredentilas(sys.argv[1])
-    run(spreadsheetId=os.environ['GOOGLE_SPREADSHEET_ID'])
+    run(yieldOfAllBonds, spreadsheetId=os.environ['GOOGLE_SPREADSHEET_ID'])
