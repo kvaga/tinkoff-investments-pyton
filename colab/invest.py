@@ -192,7 +192,12 @@ def run(yieldsOfAllBonds, spreadsheetId):
                                             )
             # return
             
-            send2GoogleSpreadSheet(getYieldByInstruments(pd.concat(commonDataframe), fullAmountOfInvestmentsInRubles, yieldsOfAllBonds),spreadsheetId)
+            send2GoogleSpreadSheet(
+                addYieldForBondsToDataframe(
+                    getYieldByInstruments(pd.concat(commonDataframe), fullAmountOfInvestmentsInRubles, yieldsOfAllBonds),yieldsOfAllBonds),
+                spreadsheetId)
+                # (x, )
+
             # print(getYieldByInstruments(commonDataframe))
                         
             """
@@ -302,8 +307,15 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
     r = service.spreadsheets().values().batchUpdate(spreadsheetId=spreadsheet_Id, body=body).execute()
 
 def addYieldForBondsToDataframe(dFrame, yieldsOfAllBonds):
+    print('Adding yield for bonds...');
+    print(type(dFrame))
+    dFrame['yield_of_bond']='aa'
     for index, row_ in dFrame.iterrows():
-           dFrame.at[index,'yield_of_bond'] = moex.loadYieldOfBondByTicker(row_['ticker'], yieldsOfAllBonds)
+        # print('ticker: ' + row_['ticker'])
+        dFrame.at[index,'yield_of_bond'] = moex.loadYieldOfBondByTicker(row_['ticker'], yieldsOfAllBonds)
+    for index, row in dFrame.iterrows():
+        print(row)
+    return dFrame
 def makeLinksForGoogleSheetsCells(dFrame,):
     for index, row_ in dFrame.iterrows():
         value = "\"userEnteredValue\": {\"formulaValue\":\"=HYPERLINK(\"https://www.tinkoff.ru/invest/"+('futures' if row_['instrument_type']=='futures' else 'bonds' if row_['instrument_type']=='bond' else 'shares' if row_['instrument_type']=='share' else 'currencies' if row_['instrument_type']=='currency' else '') +"/"+row_['ticker']+"/\"; \""+row_['name']+"\")\"}"
@@ -315,15 +327,15 @@ def getYieldByInstruments(dFrame, fullAmountOfInvestmentsInRubles, yieldsOfAllBo
     # print('q: ' + dFrame['yield_of_bond'])
     #_row['ticker'] and dFrame['instrument_type'] == 'bond' else 'Not a bond'
     # print(dFrame['yield_of_bond'])
-    addYieldForBondsToDataframe(dFrame, yieldsOfAllBonds)
     # makeLinksForGoogleSheetsCells(dFrame)
-    df = dFrame[['name', 'ticker', 'quantity', 'average_buy_price', 'currency', 'instrument_type', 'expected_yield', 'investments', 'yield_of_bond']]
+    df = dFrame[['name', 'ticker', 'quantity', 'average_buy_price', 'currency', 'instrument_type', 'expected_yield', 'investments']]
     # x = df.groupby(['name']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum'})
-    x = df.groupby(['name' , 'ticker', 'currency', 'instrument_type']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum', 'yield_of_bond': 'mean'})
+    x = df.groupby(['name' , 'ticker', 'currency', 'instrument_type']).agg({'quantity':'sum', 'average_buy_price':'mean', 'expected_yield':'sum', 'name':'count', 'investments':'sum'})
     x['average_buy_price'] = x['investments'] / x['quantity']
     x['%Yield'] = (x['expected_yield'] / x['investments'])  * 100
     x['%FromTotalInvestments'] = (x['investments'] + x['expected_yield'])/fullAmountOfInvestmentsInRubles*100
-    
+    # addYieldForBondsToDataframe(x, yieldsOfAllBonds)
+
     x = x.rename(columns={'name': 'count'})
     x = x.reset_index()
     # x['name'] = list(x['name'])[0]
@@ -435,8 +447,7 @@ def portfolio_pose_todict(p : PortfolioPosition, allShares, allBonds, allETFs, a
         'instrument_type': p.instrument_type,
         'average_buy_price': cast_money(p.average_position_price),
         'currency': p.average_position_price.currency,
-        'nkd': cast_money(p.current_nkd),
-        'yield_of_bond': ''
+        'nkd': cast_money(p.current_nkd)
     }
     
     # print('p.average_position_price: ', p.average_position_price)

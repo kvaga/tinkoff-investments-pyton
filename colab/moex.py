@@ -8,6 +8,7 @@ YIELD_URL_JSON = "https://iss.moex.com/iss/engines/stock/markets/bonds/boards/TQ
 
 def loadYieldOfBondByTicker(ticker, yieldsOfBonds):
     for item in yieldsOfBonds['securities']['data']:
+        # print('--> ticker: ', ticker, ', item: ', item)
         if item[0] == ticker:
             return item[2]
     return -123
