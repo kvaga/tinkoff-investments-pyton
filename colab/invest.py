@@ -272,7 +272,7 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
     # print("Colums: ", data.columns)
     print("Filling google sheet with values...")
     values = []
-    values.append(['name ('+getDateTime()+')','currency','instrument_type','quantity', 'average_buy_price', 'expected_yield', 'investments', '%Yield', '%FromTotalInvestments','ticker', 'yield_of_bond'])
+    values.append(['name ('+getDateTime()+')','%Yield', '%FromTotalInvestments','yield_of_bond', 'ticker', 'currency','instrument_type','quantity', 'average_buy_price', 'expected_yield', 'investments'])
     for index, row in data.iterrows():
         # row = k.tolist()
         # print("===")
@@ -283,16 +283,16 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
         # print('QQQ: ' + row['yield_of_bond'])
         values.append([\
                     row['name'], \
+                    row['%Yield'],\
+                    row['%FromTotalInvestments'],\
+                    row['yield_of_bond'],
+                    row['ticker'],\
                     row['currency'], \
                     row['instrument_type'], \
                     row['quantity'], \
                     row['average_buy_price'], \
                     row['expected_yield'], \
-                    row['investments'], \
-                    row['%Yield'],\
-                    row['%FromTotalInvestments'],\
-                    row['ticker'],\
-                    row['yield_of_bond']
+                    row['investments']
                     ])
         
 
