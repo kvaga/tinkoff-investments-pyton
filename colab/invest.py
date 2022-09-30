@@ -98,7 +98,7 @@ https://tinkoff.github.io/investAPI/operations/#portfoliorequest
 https://tinkoff.github.io/investAPI
 https://github.com/Tinkoff/invest-python
 """
-def run(yieldsOfAllBonds, spreadsheetId):        
+def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):        
  
     try:
         with Client(os.environ['TINKOFF_TOKEN_RO']) as client:
@@ -195,7 +195,7 @@ def run(yieldsOfAllBonds, spreadsheetId):
             send2GoogleSpreadSheet(
                 addYieldForBondsToDataframe(
                     getYieldByInstruments(pd.concat(commonDataframe), fullAmountOfInvestmentsInRubles, yieldsOfAllBonds),yieldsOfAllBonds),
-                spreadsheetId)
+                googleSheetName, spreadsheetId)
                 # (x, )
 
             # print(getYieldByInstruments(commonDataframe))
@@ -221,7 +221,7 @@ def getMarginAccountInfo():
             print('Unknown error on account id: ', acc['id'])
         return
 
-def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
+def send2GoogleSpreadSheet(data, googleSheetName, existingSpreadSheeId=''):
     GOOGLE_SHEETS_CREDENTIALS_FILE = os.environ['GOOGLE_PROJECT_CREDENTIALS_FILE_PATH']  # Имя файла с закрытым ключом, вы должны подставить свое
     # Читаем ключи из файла
     credentials = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_SHEETS_CREDENTIALS_FILE, 
@@ -294,17 +294,29 @@ def send2GoogleSpreadSheet(data, existingSpreadSheeId=''):
                     row['expected_yield'], \
                     row['investments']
                     ])
-        
+    ### Clearing sheets from old data
+    valuesForClearing = []
+    numOfColumns = 20
+    numOfRows = 200
+    ## fulfill columns
+    listWithColumns = [''] * numOfColumns
+    # for i in range(numOfColumns):
+        # list.append()
+    ## fulfill rows
+    for i in range(numOfRows):
+        valuesForClearing.append(listWithColumns)
+    fulfillSpreadSheet(service,spreadsheet_Id,googleSheetName, valuesForClearing)
+    ### Fullfill sheets with business data
+    fulfillSpreadSheet(service,spreadsheet_Id,googleSheetName, values)
 
-    
+def fulfillSpreadSheet(sheetsService, spreadsheet_Id, listName, values):
     body = {
         'valueInputOption' : 'RAW',
         'data' : [
-            {'range' : 'Лист номер один', 'values' : values},
+            {'range' : listName, 'values' : values},
         ]
     }
-
-    r = service.spreadsheets().values().batchUpdate(spreadsheetId=spreadsheet_Id, body=body).execute()
+    r = sheetsService.spreadsheets().values().batchUpdate(spreadsheetId=spreadsheet_Id, body=body).execute()
 
 def addYieldForBondsToDataframe(dFrame, yieldsOfAllBonds):
     print('Adding yield for bonds...');
@@ -496,4 +508,4 @@ if __name__ == "__main__":
     yieldOfAllBonds = moex.loadYieldsOfAllBonds();
     # print(moex.loadyield_of_bondByTicker('XS2157526315', bondsInfo))
     loadCredentilas(sys.argv[1])
-    run(yieldOfAllBonds, spreadsheetId=os.environ['GOOGLE_SPREADSHEET_ID'])
+    run(yieldOfAllBonds, 'Лист номер один', spreadsheetId=os.environ['GOOGLE_SPREADSHEET_ID'])
