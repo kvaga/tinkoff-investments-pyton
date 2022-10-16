@@ -192,7 +192,7 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
                                             )
             # return
             
-            send2GoogleSpreadSheet(
+            send2GoogleSpreadSheet(fullAmountOfInvestmentsInRubles,
                 addYieldForBondsToDataframe(
                     getYieldByInstruments(pd.concat(commonDataframe), fullAmountOfInvestmentsInRubles, yieldsOfAllBonds),yieldsOfAllBonds),
                 googleSheetName, spreadsheetId)
@@ -221,7 +221,7 @@ def getMarginAccountInfo():
             print('Unknown error on account id: ', acc['id'])
         return
 
-def send2GoogleSpreadSheet(data, googleSheetName, existingSpreadSheeId=''):
+def send2GoogleSpreadSheet(fullAmountOfInvestmentsInRubles, data, googleSheetName, existingSpreadSheeId=''):
     GOOGLE_SHEETS_CREDENTIALS_FILE = os.environ['GOOGLE_PROJECT_CREDENTIALS_FILE_PATH']  # Имя файла с закрытым ключом, вы должны подставить свое
     # Читаем ключи из файла
     credentials = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_SHEETS_CREDENTIALS_FILE, 
@@ -272,6 +272,7 @@ def send2GoogleSpreadSheet(data, googleSheetName, existingSpreadSheeId=''):
     # print("Colums: ", data.columns)
     print("Filling google sheet with values...")
     values = []
+    values.append(['totalAmountInRubles', fullAmountOfInvestmentsInRubles])
     values.append(['name ('+getDateTime()+')','%Yield', '%FromTotalInvestments','yield_of_bond', 'ticker', 'currency','instrument_type','quantity', 'average_buy_price', 'expected_yield', 'investments'])
     for index, row in data.iterrows():
         # row = k.tolist()
@@ -320,13 +321,13 @@ def fulfillSpreadSheet(sheetsService, spreadsheet_Id, listName, values):
 
 def addYieldForBondsToDataframe(dFrame, yieldsOfAllBonds):
     print('Adding yield for bonds...');
-    print(type(dFrame))
+    # print(type(dFrame))
     dFrame['yield_of_bond']='aa'
     for index, row_ in dFrame.iterrows():
         # print('ticker: ' + row_['ticker'])
         dFrame.at[index,'yield_of_bond'] = moex.loadYieldOfBondByTicker(row_['ticker'], yieldsOfAllBonds)
-    for index, row in dFrame.iterrows():
-        print(row)
+    # for index, row in dFrame.iterrows():
+    #     print(row)
     return dFrame
 def makeLinksForGoogleSheetsCells(dFrame,):
     for index, row_ in dFrame.iterrows():
