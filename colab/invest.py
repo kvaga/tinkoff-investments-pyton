@@ -401,7 +401,7 @@ def getCurrencyInfoByFigi(figi, allCurrencies):
     return allCurrencies[allCurrencies['figi'] == figi]
 def getCurrencyNameByFigi(figi, allCurrencies):
     r = allCurrencies[allCurrencies['figi'] == figi]['name']
-    return list(r)[0]
+    return 'figi:'+figi if r.empty else list(r)[0]
     
 
 def getMapOfAllShares(client):
@@ -415,11 +415,11 @@ def getShareInfoByFigi(figi, allShares):
     return allShares[allShares['figi'] == figi]
 def getShareNameByFigi(figi, allShares):
     r = allShares[allShares['figi'] == figi]['name']
-    return list(r)[0]
+    return 'figi:'+figi if r.empty else list(r)[0]
 
 def getCommonInstrumetTickerByFigi(figi, instruments):
     r = instruments[instruments['figi'] == figi]['ticker']
-    return list(r)[0]
+    return 'figi:'+figi if r.empty else list(r)[0]
     
 def getMapOfAllBonds(client):
     instruments: InstrumentsService = client.instruments
