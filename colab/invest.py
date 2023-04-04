@@ -92,6 +92,70 @@ def getDateTime():
     # ts = datetime.timestamp(dt)
     # print("Date and time is:", dt)
     return dt.strftime("%Y.%m.%d %H:%M:%S")
+def getDataFromSpecificPortfolioAndSave2GoogleSheet(accountId, googleSheetName, existingSpreadSheeId, client, allShares, allBonds, allEtfs, allCurrencies, allFutures):
+    #2111426330
+    r : PortfolioResponse = client.operations.get_portfolio(account_id=accountId)
+    df = pd.DataFrame([portfolio_pose_todict(p, allShares, allBonds, allEtfs, allCurrencies, allFutures) for p in r.positions])
+    #commonDataframe = []
+    #commonDataframe.append(df)
+    #print(commonDataframe)
+    storePortfolioInfo2GoogleSheet(df, googleSheetName, existingSpreadSheeId)
+
+def storePortfolioInfo2GoogleSheet(data, googleSheetName, existingSpreadSheeId=''):
+    GOOGLE_SHEETS_CREDENTIALS_FILE = os.environ['GOOGLE_PROJECT_CREDENTIALS_FILE_PATH']  # Имя файла с закрытым ключом, вы должны подставить свое
+    # Читаем ключи из файла
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_SHEETS_CREDENTIALS_FILE,
+                                                            ['https://www.googleapis.com/auth/spreadsheets',
+                                                                     'https://www.googleapis.com/auth/drive'])
+    print("Auth process in Google Sheets")
+    httpAuth = credentials.authorize(httplib2.Http()) # Авторизуемся в системе
+    service = apiclient.discovery.build('sheets', 'v4', http = httpAuth) # Выбираем работу с таблицами и 4 версию API
+    print("service: ")
+    #if( not existingSpreadSheeId):
+    #    print("Creating google sheet file...")
+    #    spreadsheet = service.spreadsheets().create(body = {
+    #                                                       'properties': {'title': 'Первый тестовый документ', 'locale': 'ru_RU'},
+    #                                                       'sheets': [{'properties': {'sheetType': 'GRID',
+    #                                                       'sheetId': 0,
+    #                                                       'title': 'INVESTMENTS ALL',
+    #                                                       'gridProperties': {'rowCount': 100, 'columnCount': 15}}}]
+    #                                                        }).execute()
+    #    print('Created spreadsheet with id: ', spreadsheet['spreadsheetId'])
+    #    spreadsheet_Id = spreadsheet['spreadsheetId']
+    #else:
+    spreadsheet_Id = existingSpreadSheeId #spreadsheet['spreadsheetId'] # сохраняем идентификатор файла
+    print("Google Sheet URL: ",'https://docs.google.com/spreadsheets/d/' + spreadsheet_Id)
+    print("Replacing NaN values in a dataframe before saving to google sheet...")
+    data.fillna("NaNo", inplace = True)
+    values = []
+    values.append(['name ('+getDateTime()+')',''' '%FromTotalInvestments' ''',''' 'yield_of_bond' ''', 'ticker', 'currency','instrument_type','quantity', 'average_buy_price', 'expected_yield', 'investments'])
+    for index, row in data.iterrows():
+        values.append([\
+                       row['name'], \
+                       #row['%FromTotalInvestments'],\
+                       #row['yield_of_bond'],
+                       row['ticker'],\
+                       row['currency'], \
+                       row['instrument_type'], \
+                       row['quantity'], \
+                       row['average_buy_price'], \
+                       row['expected_yield'], \
+                       row['investments']
+                      ])
+    ### Clearing sheets from old data
+    numOfColumns = 20
+    numOfRows = 200
+    valuesForClearing = []
+    ## fulfill columns
+    listWithColumns = [''] * numOfColumns
+    ## fulfill rows 
+    for i in range(numOfRows):
+        valuesForClearing.append(listWithColumns)
+    fulfillSpreadSheet(service,spreadsheet_Id,googleSheetName, valuesForClearing)
+    ### Fullfill sheets with business data
+    fulfillSpreadSheet(service,spreadsheet_Id,googleSheetName, values)
+
+
 """
 Для видео по get_portfolio
 https://tinkoff.github.io/investAPI/operations/#portfoliorequest
@@ -102,13 +166,18 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
  
     try:
         with Client(os.environ['TINKOFF_TOKEN_RO']) as client:
+            #for index, x in getAccounts(client).iterrows():
+            #    print(x['id'])
+            #getDataFromSpecificPortfolioAndSave2GoogleSheet(client)
+            #return
             print('Getting all maps from tinkoff API...')
             allShares=getMapOfAllShares(client)
             allBonds = getMapOfAllBonds(client)
             allEtfs = getMapOfAllETFs(client)
             allCurrencies = getMapOfAllCurrencies(client)
             allFutures = getMapOfAllFutures(client)
-
+            #getDataFromSpecificPortfolioAndSave2GoogleSheet('2111426330', 'My Strategy Portfolio', spreadsheetId, client, allShares, allBonds, allEtfs, allCurrencies, allFutures)
+            #return
             commonDataframe = []
             rublesPerAccount = []
             # commonDataframe = pd.DataFrame(columns=['name', 'quantity', 'average_buy_price', 'currency', 'instrument_type', 'expected_yield'])
@@ -146,20 +215,28 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
             print('eurrur: ', eurrur)
             print('cnyrur: ', cnyrur)            
             
-            for x in [\
-                        '2111522740', #             Маржиналка лонг /
-                        '2111426330', #             Маржиналка шорт /
-                        '2090759289', #                       Коган /
-                        '2000079539', #                         Мой /
-                        '2038244386', #                         ИИС /
-                        '2111421018', # Не выводить - налог большой /
-                        '2111427718', #          ВТБ Мои Инвестиции /
-                        '2111450124', #        Коган Товарные рынки /
-                        '2111497117', #                   Удалить 5 /
-                        '2111378143', #             Открытие Брокер /
-                    ]: 
+            for index, row in getAccounts(client).iterrows():
+                print(row['id'],': ' , row['name'])
+            #for x in [\
+            #            '2111522740', #             Маржиналка лонг /
+            #            '2111426330', #             Маржиналка шорт /
+            #            '2090759289', #                       Коган /
+            #            '2000079539', #                         Мой /
+            #            '2038244386', #                         ИИС /
+            #            '2111421018', # Не выводить - налог большой /
+            #            '2111427718', #          ВТБ Мои Инвестиции /
+            #            '2111450124', #        Коган Товарные рынки /
+            #            '2111497117', #                   Удалить 5 /
+            #            '2111378143', #             Открытие Брокер /
+            #        ]: 
+                #print(x)
+                x = row['id']
                 
                 # print(x)
+                print('Processing of account: ', row['name'])
+                if x == '2036073431':
+                    print('Account ', row['name'], ' was skipped')
+                    continue
                 r : PortfolioResponse = client.operations.get_portfolio(account_id=x)
                 df = pd.DataFrame([portfolio_pose_todict(p, allShares, allBonds, allEtfs, allCurrencies, allFutures) for p in r.positions])
                 # commonDataframe.append(df)
@@ -199,7 +276,7 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
                 # (x, )
 
             # print(getYieldByInstruments(commonDataframe))
-                        
+            getDataFromSpecificPortfolioAndSave2GoogleSheet('2111426330', 'My Strategy Portfolio', spreadsheetId, client, allShares, allBonds, allEtfs, allCurrencies, allFutures)           
             """
             print("bonds", cast_money(r.total_amount_bonds), df.query("instrument_type == 'bond'")['sell_sum'].sum(), sep=" : ")
             print("etfs", cast_money(r.total_amount_etf), df.query("instrument_type == 'etf'")['sell_sum'].sum(), sep=" : ")
@@ -317,6 +394,7 @@ def fulfillSpreadSheet(sheetsService, spreadsheet_Id, listName, values):
             {'range' : listName, 'values' : values},
         ]
     }
+    print(body)
     r = sheetsService.spreadsheets().values().batchUpdate(spreadsheetId=spreadsheet_Id, body=body).execute()
 
 def addYieldForBondsToDataframe(dFrame, yieldsOfAllBonds):
