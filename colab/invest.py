@@ -12,6 +12,7 @@ from datetime import datetime
 
 import pandas as pd
 import os
+import math
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
@@ -367,9 +368,9 @@ def send2GoogleSpreadSheet(fullAmountOfInvestmentsInRubles, data, googleSheetNam
                     row['ticker'],\
                     row['currency'], \
                     row['instrument_type'], \
-                    row['quantity'], \
-                    row['average_buy_price'], \
-                    row['expected_yield'], \
+                    0 if row['quantity']==-math.inf else row['quantity'], \
+                    -123 if row['average_buy_price']==-math.inf else row['average_buy_price'] , \
+                    -123 if row['expected_yield']==-math.inf else row['expected_yield'], \
                     row['investments']
                     ])
     ### Clearing sheets from old data
