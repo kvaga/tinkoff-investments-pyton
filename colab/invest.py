@@ -371,7 +371,6 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
             print('Storing history of operations to sheetName=%s and spreadSheetId=%s' % (historyOfOperationsSheetName, spreadsheetId))
             print(operationsHistoryDf)
             storeOperationsHistoryInfo2GoogleSheet(operationsHistoryDf, historyOfOperationsSheetName, spreadsheetId)
-            return
             fullAmountOfInvestmentsInRubles = getFullAmountOfInvestmentsInRub(
                                             pd.concat(commonDataframe), 
                                             usdrur, hkdrur, cnyrur, eurrur,
@@ -491,12 +490,18 @@ def send2GoogleSpreadSheet(fullAmountOfInvestmentsInRubles, data, googleSheetNam
     # for i in range(numOfColumns):
         # list.append()
     ## fulfill rows
-    for i in range(numOfRows):
-        valuesForClearing.append(listWithColumns)
-    fulfillSpreadSheet(service,spreadsheet_Id,googleSheetName, valuesForClearing)
+    # for i in range(numOfRows):
+        # valuesForClearing.append(listWithColumns)
+    # fulfillSpreadSheet(service,spreadsheet_Id,googleSheetName, valuesForClearing)
+    clearSheetByName(googleSheetName, service, spreadsheet_Id)
     ### Fullfill sheets with business data
     fulfillSpreadSheet(service,spreadsheet_Id,googleSheetName, values)
 
+def clearSheetByName(sheetName, service, spreadsheet_Id):
+    rangeAll = '{0}!A1:Z'.format( sheetName )
+    body = {}
+    resultClear = service.spreadsheets( ).values( ).clear( spreadsheetId=spreadsheet_Id, range=rangeAll,
+                                                       body=body ).execute( )
 def fulfillSpreadSheet(sheetsService, spreadsheet_Id, listName, values):
     body = {
         'valueInputOption' : 'RAW',
@@ -694,7 +699,7 @@ def loadCredentilas(runfile):
     print('GOOGLE_PROJECT_CREDENTIALS_FILE_PATH: ', os.environ['GOOGLE_PROJECT_CREDENTIALS_FILE_PATH'])
 
 if __name__ == "__main__":
-    yieldOfAllBonds = '' #moex.loadYieldsOfAllBonds();
+    yieldOfAllBonds = moex.loadYieldsOfAllBonds();
     
     # print(moex.loadyield_of_bondByTicker('XS2157526315', bondsInfo))
     loadCredentilas(sys.argv[1])
