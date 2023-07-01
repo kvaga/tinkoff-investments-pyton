@@ -1,16 +1,20 @@
 from ctypes import cast
-from tinkoff.invest import Client, RequestError, PortfolioResponse, PositionsResponse, PortfolioPosition, InstrumentStatus, GetMarginAttributesResponse, GetLastPricesResponse
+from tinkoff.invest import Client, RequestError, PositionsResponse, AccessLevel, OperationsResponse, Operation, \
+    OperationState, OperationType,PortfolioPosition, PortfolioResponse, InstrumentStatus
 import sys
 # https://habr.com/en/post/483302/
 from googleapiclient.discovery import build
 import moex
+from typing import Optional
 
 import httplib2 
-import apiclient.discovery
+#import apiclient.discovery
+import googleapiclient.discovery
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
 import pandas as pd
+from pandas import DataFrame
 import os
 import math
 pd.set_option('display.max_rows', 500)
@@ -110,7 +114,7 @@ def storePortfolioInfo2GoogleSheet(data, googleSheetName, existingSpreadSheeId='
                                                                      'https://www.googleapis.com/auth/drive'])
     print("Auth process in Google Sheets")
     httpAuth = credentials.authorize(httplib2.Http()) # Авторизуемся в системе
-    service = apiclient.discovery.build('sheets', 'v4', http = httpAuth) # Выбираем работу с таблицами и 4 версию API
+    service = googleapiclient.discovery.build('sheets', 'v4', http = httpAuth) # Выбираем работу с таблицами и 4 версию API
     print("service: ")
     #if( not existingSpreadSheeId):
     #    print("Creating google sheet file...")
@@ -132,7 +136,7 @@ def storePortfolioInfo2GoogleSheet(data, googleSheetName, existingSpreadSheeId='
     values.append(['name ('+getDateTime()+')',''' '%FromTotalInvestments' ''',''' 'yield_of_bond' ''', 'ticker', 'currency','instrument_type','quantity', 'average_buy_price', 'expected_yield', 'investments'])
     for index, row in data.iterrows():
         values.append([\
-                       row['name'], \
+                       '' if row['name']==None else row['name'] , \
                        #row['%FromTotalInvestments'],\
                        #row['yield_of_bond'],
                        row['ticker'],\
@@ -156,6 +160,93 @@ def storePortfolioInfo2GoogleSheet(data, googleSheetName, existingSpreadSheeId='
     ### Fullfill sheets with business data
     fulfillSpreadSheet(service,spreadsheet_Id,googleSheetName, values)
 
+def storeOperationsHistoryInfo2GoogleSheet(data, googleSheetName, existingSpreadSheeId=''):
+    GOOGLE_SHEETS_CREDENTIALS_FILE = os.environ['GOOGLE_PROJECT_CREDENTIALS_FILE_PATH']  # Имя файла с закрытым ключом, вы должны подставить свое
+    # Читаем ключи из файла
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_SHEETS_CREDENTIALS_FILE,
+                                                            ['https://www.googleapis.com/auth/spreadsheets',
+                                                                     'https://www.googleapis.com/auth/drive'])
+    print("Auth process in Google Sheets")
+    httpAuth = credentials.authorize(httplib2.Http()) # Авторизуемся в системе
+    service = googleapiclient.discovery.build('sheets', 'v4', http = httpAuth) # Выбираем работу с таблицами и 4 версию API
+    print("service: ")
+    spreadsheet_Id = existingSpreadSheeId #spreadsheet['spreadsheetId'] # сохраняем идентификатор файла
+    print("Google Sheet URL: ",'https://docs.google.com/spreadsheets/d/' + spreadsheet_Id)
+    print("Replacing NaN values in a dataframe before saving to google sheet...")
+    data.fillna("NaNo", inplace = True)
+    # data.dt.strftime('%Y-%m-%d %H:%M:%S')
+    data['date'] = data['date'].astype(str)
+    values = []
+    values.append(['acc ('+getDateTime()+')',''' 'date' ''', ''' 'type' ''' ,'otype', 'currency','instrument_type','ticker', 'figi', 'quantity', 'state','   payment', 'price'])
+    for index, row in data.iterrows():
+        values.append([\
+                       row['acc'] , \
+                       row['date'],\
+                       row['type'],
+                       row['otype'],\
+                       row['currency'], \
+                       row['instrument_type'], \
+                       row['ticker'], \
+                       row['figi'], \
+                       row['quantity'], \
+                       row['state'], \
+                       row['payment'], \
+                       row['price'], \
+
+                      ])
+    ### Clearing sheets from old data
+    numOfColumns = 20
+    numOfRows = 200000
+    valuesForClearing = []
+    ## fulfill columns
+    listWithColumns = [''] * numOfColumns
+    ## fulfill rows 
+    for i in range(numOfRows):
+        valuesForClearing.append(listWithColumns)
+    fulfillSpreadSheet(service,spreadsheet_Id,googleSheetName, valuesForClearing)
+    ### Fullfill sheets with business data
+    fulfillSpreadSheet(service,spreadsheet_Id,googleSheetName, values)
+
+def get_operations_df(client, account_id : str, allShares, allBonds, allETFs, allCurrencies, allFutures) -> Optional[DataFrame]:
+        """
+        Преобразую PortfolioResponse в pandas.DataFrame
+
+        :param account_id:
+        :return:
+        """
+        r: OperationsResponse = client.operations.get_operations(
+            account_id=account_id,
+            from_=datetime(2015,1,1),
+            to=datetime.utcnow()
+        )
+
+        if len(r.operations) < 1: return None
+        df = pd.DataFrame([operation_todict(p, account_id, allShares, allBonds, allETFs, allCurrencies, allFutures) for p in r.operations])
+        return df
+def operation_todict(o : Operation, account_id : str, allShares, allBonds, allETFs, allCurrencies, allFutures):
+        """
+        Преобразую PortfolioPosition в dict
+        :param p:
+        :return:
+        """
+        ticker = getCommonInstrumetTickerByFigi(o.figi, allShares) if o.instrument_type == 'share' else getCommonInstrumetTickerByFigi(o.figi, allBonds) if o.instrument_type == 'bond' else getCommonInstrumetTickerByFigi(o.figi, allETFs) if o.instrument_type == 'etf' else getCommonInstrumetTickerByFigi(o.figi, allCurrencies) if o.instrument_type == 'currency' else getCommonInstrumetTickerByFigi(o.figi, allFutures) if o.instrument_type == 'futures' else 'UnknownInstrumentType_'+o.instrument_type;
+        r = {
+            'acc': account_id,
+            'date': o.date,
+            'type': o.type,
+            'otype': o.operation_type,
+            'currency': o.currency,
+            'instrument_type': o.instrument_type,
+            'ticker': ticker,
+            'figi': o.figi,
+            'quantity': o.quantity,
+            'state': o.state,
+            'payment': cast_money(o.payment),
+            'price': cast_money(o.price),
+        }
+
+        return r
+
 
 """
 Для видео по get_portfolio
@@ -167,6 +258,12 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
  
     try:
         with Client(os.environ['TINKOFF_TOKEN_RO']) as client:
+            
+            # r: OperationsResponse = client.operations.get_operations(
+            #     account_id=2090759289,
+            #     from_=datetime(2015,1,1),
+            #     to=datetime.utcnow()
+            # )
             #for index, x in getAccounts(client).iterrows():
             #    print(x['id'])
             #getDataFromSpecificPortfolioAndSave2GoogleSheet(client)
@@ -177,10 +274,13 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
             allEtfs = getMapOfAllETFs(client)
             allCurrencies = getMapOfAllCurrencies(client)
             allFutures = getMapOfAllFutures(client)
+            
+            historyOfOperationsSheetName = 'History Of Operations'
             #getDataFromSpecificPortfolioAndSave2GoogleSheet('2111426330', 'My Strategy Portfolio', spreadsheetId, client, allShares, allBonds, allEtfs, allCurrencies, allFutures)
             #return
             commonDataframe = []
             rublesPerAccount = []
+            operationsHistoryDf = pd.DataFrame()
             # commonDataframe = pd.DataFrame(columns=['name', 'quantity', 'average_buy_price', 'currency', 'instrument_type', 'expected_yield'])
             # BBG012C34FX0
             #print(allShares)
@@ -238,6 +338,11 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
                 if x == '2036073431':
                     print('Account ', row['name'], ' was skipped')
                     continue
+                
+                print('Getting history of operations of account "%s"'%(x))
+                operationsHistoryDf = operationsHistoryDf.append(get_operations_df(client, x, allShares, allBonds, allEtfs, allCurrencies, allFutures), ignore_index=True)
+                #operationsHistoryArray.append(operationsHistoryDf)
+                print()
                 r : PortfolioResponse = client.operations.get_portfolio(account_id=x)
                 df = pd.DataFrame([portfolio_pose_todict(p, allShares, allBonds, allEtfs, allCurrencies, allFutures) for p in r.positions])
                 # commonDataframe.append(df)
@@ -263,6 +368,10 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
             # print(pd.concat(commonDataframe).sort_values(by=['%'],ascending=False))
             # print(getYieldByInstruments(pd.concat(commonDataframe)))
             
+            print('Storing history of operations to sheetName=%s and spreadSheetId=%s' % (historyOfOperationsSheetName, spreadsheetId))
+            print(operationsHistoryDf)
+            storeOperationsHistoryInfo2GoogleSheet(operationsHistoryDf, historyOfOperationsSheetName, spreadsheetId)
+            return
             fullAmountOfInvestmentsInRubles = getFullAmountOfInvestmentsInRub(
                                             pd.concat(commonDataframe), 
                                             usdrur, hkdrur, cnyrur, eurrur,
@@ -307,7 +416,7 @@ def send2GoogleSpreadSheet(fullAmountOfInvestmentsInRubles, data, googleSheetNam
                                                                     'https://www.googleapis.com/auth/drive'])
     print("Auth process in Google Sheets")
     httpAuth = credentials.authorize(httplib2.Http()) # Авторизуемся в системе
-    service = apiclient.discovery.build('sheets', 'v4', http = httpAuth) # Выбираем работу с таблицами и 4 версию API 
+    service = googleapiclient.discovery.build('sheets', 'v4', http = httpAuth) # Выбираем работу с таблицами и 4 версию API 
     print("service: ")
     if( not existingSpreadSheeId):
         print("Creating google sheet file...")
@@ -585,7 +694,8 @@ def loadCredentilas(runfile):
     print('GOOGLE_PROJECT_CREDENTIALS_FILE_PATH: ', os.environ['GOOGLE_PROJECT_CREDENTIALS_FILE_PATH'])
 
 if __name__ == "__main__":
-    yieldOfAllBonds = moex.loadYieldsOfAllBonds();
+    yieldOfAllBonds = '' #moex.loadYieldsOfAllBonds();
+    
     # print(moex.loadyield_of_bondByTicker('XS2157526315', bondsInfo))
     loadCredentilas(sys.argv[1])
     run(yieldOfAllBonds, 'Лист номер один', spreadsheetId=os.environ['GOOGLE_SPREADSHEET_ID'])
