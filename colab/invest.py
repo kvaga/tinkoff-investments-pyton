@@ -197,13 +197,13 @@ def storeOperationsHistoryInfo2GoogleSheet(data, googleSheetName, existingSpread
     ### Clearing sheets from old data
     numOfColumns = 20
     numOfRows = 200000
-    valuesForClearing = []
+    # valuesForClearing = []
     ## fulfill columns
     listWithColumns = [''] * numOfColumns
     ## fulfill rows 
-    for i in range(numOfRows):
-        valuesForClearing.append(listWithColumns)
-    fulfillSpreadSheet(service,spreadsheet_Id,googleSheetName, valuesForClearing)
+    # for i in range(numOfRows):
+    #     valuesForClearing.append(listWithColumns)
+    # fulfillSpreadSheet(service,spreadsheet_Id,googleSheetName, valuesForClearing)
     ### Fullfill sheets with business data
     fulfillSpreadSheet(service,spreadsheet_Id,googleSheetName, values)
 
@@ -248,6 +248,22 @@ def operation_todict(o : Operation, account_id : str, allShares, allBonds, allET
         return r
 
 
+def storePricesOfInstrumentsToGoogleSheet(values, sheetName, googleService, spreadsheet_Id):
+    # values.fillna("NaNo", inplace = True)
+    # values.dt.strftime('%Y-%m-%d %H:%M:%S')
+    #values['date'] = values['date'].astype(str)
+    # _values = []
+    #_values.append(['name ('+getDateTime()+')','%Yield', '%FromTotalInvestments','yield_of_bond', 'ticker', 'currency','instrument_type','quantity', 'average_buy_price', 'expected_yield', 'investments'])
+    # for index, row in values.iterrows():
+    #     _values.append([\
+    #                 row['name'], \
+    #                 row['ticker'],\
+    #                 row['price']
+    #                 ])
+
+    fulfillSpreadSheet(googleService, spreadsheet_Id, sheetName, values)
+
+
 """
 Для видео по get_portfolio
 https://tinkoff.github.io/investAPI/operations/#portfoliorequest
@@ -258,7 +274,15 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
  
     try:
         with Client(os.environ['TINKOFF_TOKEN_RO']) as client:
-            
+            GOOGLE_SHEETS_CREDENTIALS_FILE = os.environ['GOOGLE_PROJECT_CREDENTIALS_FILE_PATH']  # Имя файла с закрытым ключом, вы должны подставить свое
+            # Читаем ключи из файла
+            credentials = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_SHEETS_CREDENTIALS_FILE, 
+                                                                   ['https://www.googleapis.com/auth/spreadsheets', 
+                                                                    'https://www.googleapis.com/auth/drive'])
+            print("Auth process in Google Sheets")
+            httpAuth = credentials.authorize(httplib2.Http()) # Авторизуемся в системе
+            googleService = googleapiclient.discovery.build('sheets', 'v4', http = httpAuth) # Выбираем работу с таблицами и 4 версию API
+
             # r: OperationsResponse = client.operations.get_operations(
             #     account_id=2090759289,
             #     from_=datetime(2015,1,1),
@@ -274,6 +298,29 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
             allEtfs = getMapOfAllETFs(client)
             allCurrencies = getMapOfAllCurrencies(client)
             allFutures = getMapOfAllFutures(client)
+            
+            print('Get Ticker from Figi for Current Prices')
+            currentPricesOfAllInstruments = [['ticker ('+getDateTime()+')', 'figi', 'lastPrice']]
+            r: GetLastPricesResponse = client.market_data.get_last_prices()
+            for instrument in r.last_prices:
+                ticker = getCommonInstrumetTickerByFigi(instrument.figi, allShares)
+                if(ticker.startswith('figi:')):
+                    ticker = getCommonInstrumetTickerByFigi(instrument.figi, allBonds)
+                if(ticker.startswith('figi:')):
+                    ticker = getCommonInstrumetTickerByFigi(instrument.figi, allEtfs)
+                if(ticker.startswith('figi:')):
+                    ticker = getCommonInstrumetTickerByFigi(instrument.figi, allFutures)
+                if(ticker.startswith('figi:')):
+                    ticker = getCommonInstrumetTickerByFigi(instrument.figi, allCurrencies)
+                if(ticker.startswith('figi:')):
+                    continue
+                currentPricesOfAllInstruments.append([ticker, instrument.figi,cast_money(instrument.price)])
+                # print()
+            # US9100471096
+            # allShares=getMapOfAllShares(client)
+            # print(allShares).
+            storePricesOfInstrumentsToGoogleSheet(currentPricesOfAllInstruments, 'TinkoffAllShares', googleService, spreadsheetId)
+            # return
             
             historyOfOperationsSheetName = 'History Of Operations'
             #getDataFromSpecificPortfolioAndSave2GoogleSheet('2111426330', 'My Strategy Portfolio', spreadsheetId, client, allShares, allBonds, allEtfs, allCurrencies, allFutures)
@@ -299,7 +346,6 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
             # Евро :  BBG0013HJJ31
             # Юань :  BBG0013HRTL0
             # u = client.market_data.get_last_prices(figi=['USD000UTSTOM'])
-            r: GetLastPricesResponse = client.market_data.get_last_prices()
             # u = pd.DataFrame([p.LastPrice[] for p in r.last_prices])
             # print(u)
             # u = u[figi=['BBG0013HGFT4']]
@@ -497,19 +543,22 @@ def send2GoogleSpreadSheet(fullAmountOfInvestmentsInRubles, data, googleSheetNam
     ### Fullfill sheets with business data
     fulfillSpreadSheet(service,spreadsheet_Id,googleSheetName, values)
 
-def clearSheetByName(sheetName, service, spreadsheet_Id):
-    rangeAll = '{0}!A1:Z'.format( sheetName )
+def clearSheetByName(sheetName, service, spreadsheet_Id, rangeForClearingData='A1:Z'):
+    print('Clearing [{}] sheet...'.format(sheetName))
+    rangeAll = '{}!{}'.format( sheetName, rangeForClearingData )
     body = {}
     resultClear = service.spreadsheets( ).values( ).clear( spreadsheetId=spreadsheet_Id, range=rangeAll,
                                                        body=body ).execute( )
-def fulfillSpreadSheet(sheetsService, spreadsheet_Id, listName, values):
+def fulfillSpreadSheet(sheetsService, spreadsheet_Id, sheetName, values, rangeForClearingData='A1:Z'):
+    clearSheetByName(sheetName, sheetsService, spreadsheet_Id, rangeForClearingData)
+    print('Storing prices of instrumets to the sheet {}'.format(sheetName))
     body = {
         'valueInputOption' : 'RAW',
         'data' : [
-            {'range' : listName, 'values' : values},
+            {'range' : sheetName, 'values' : values},
         ]
     }
-    print(body)
+    # print(body)
     r = sheetsService.spreadsheets().values().batchUpdate(spreadsheetId=spreadsheet_Id, body=body).execute()
 
 def addYieldForBondsToDataframe(dFrame, yieldsOfAllBonds):
