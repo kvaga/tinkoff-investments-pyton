@@ -386,8 +386,9 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
                     continue
                 
                 print('Getting history of operations of account "%s"'%(x))
-                operationsHistoryDf = operationsHistoryDf.append(get_operations_df(client, x, allShares, allBonds, allEtfs, allCurrencies, allFutures), ignore_index=True)
+                # operationsHistoryDf = operationsHistoryDf.append(get_operations_df(client, x, allShares, allBonds, allEtfs, allCurrencies, allFutures), ignore_index=True)
                 #operationsHistoryArray.append(operationsHistoryDf)
+                operationsHistoryDf = pd.concat([operationsHistoryDf, pd.DataFrame(get_operations_df(client, x, allShares, allBonds, allEtfs, allCurrencies, allFutures))], ignore_index=True)
                 print()
                 r : PortfolioResponse = client.operations.get_portfolio(account_id=x)
                 df = pd.DataFrame([portfolio_pose_todict(p, allShares, allBonds, allEtfs, allCurrencies, allFutures) for p in r.positions])
