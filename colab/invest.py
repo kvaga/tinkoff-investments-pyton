@@ -17,6 +17,11 @@ import pandas as pd
 from pandas import DataFrame
 import os
 import math
+"""
+To fix an error
+you must change schemas.py file in the python's lib and add the row
+REAL_EXCHANGE_DEALER = 4
+"""
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
@@ -292,12 +297,14 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
             #    print(x['id'])
             #getDataFromSpecificPortfolioAndSave2GoogleSheet(client)
             #return
+            
+            
             print('Getting all maps from tinkoff API...')
-            allShares=getMapOfAllShares(client)
-            allBonds = getMapOfAllBonds(client)
-            allEtfs = getMapOfAllETFs(client)
+            allShares=      getMapOfAllShares(client)
+            allBonds =      getMapOfAllBonds(client)
+            allEtfs =       getMapOfAllETFs(client)
             allCurrencies = getMapOfAllCurrencies(client)
-            allFutures = getMapOfAllFutures(client)
+            allFutures =    getMapOfAllFutures(client)
             
             print('Get Ticker from Figi for Current Prices')
             currentPricesOfAllInstruments = [['ticker ('+getDateTime()+')', 'figi', 'lastPrice']]
