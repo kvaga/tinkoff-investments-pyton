@@ -18,9 +18,14 @@ from pandas import DataFrame
 import os
 import math
 """
-To fix an error
+- To fix an error
 you must change schemas.py file in the python's lib and add the row
 REAL_EXCHANGE_DEALER = 4
+
+- To fix error: 65 is not a valid OperationType
+in the _grpc_helpers.py in the method protobuf_to_dataclass
+add overwriting the variable:
+if(pb_value==65): pb_value=22
 """
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 500)
