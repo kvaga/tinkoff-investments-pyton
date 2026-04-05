@@ -1,5 +1,7 @@
 from ctypes import cast
-from tinkoff.invest import Client, RequestError, PositionsResponse, AccessLevel, OperationsResponse, Operation, \
+# from tinkoff.invest 
+
+from t_tech.invest import Client, RequestError, PositionsResponse, AccessLevel, OperationsResponse, Operation, \
     OperationState, OperationType,PortfolioPosition, PortfolioResponse, InstrumentStatus
 import sys
 # https://habr.com/en/post/483302/
@@ -394,6 +396,9 @@ def run(yieldsOfAllBonds, googleSheetName, spreadsheetId):
                 # print(x)
                 print('Processing of account: ', row['name'])
                 if x == '2036073431':
+                    print('Account ', row['name'], ' was skipped')
+                    continue
+                if x == '2261714455':
                     print('Account ', row['name'], ' was skipped')
                     continue
                 
