@@ -11,7 +11,7 @@ def loadYieldOfBondByTicker(ticker, yieldsOfBonds):
         # print('--> ticker: ', ticker, ', item: ', item)
         if item[0] == ticker:
             return item[2]
-    return -123
+    return str(-123)
     # print(my_dict['securities']['data'][0])
     # print(my_dict['audience']['id']['@what'])
     #return "" #my_dict

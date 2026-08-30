@@ -582,6 +582,7 @@ def fulfillSpreadSheet(sheetsService, spreadsheet_Id, sheetName, values, rangeFo
 def addYieldForBondsToDataframe(dFrame, yieldsOfAllBonds):
     print('Adding yield for bonds...');
     # print(type(dFrame))
+
     dFrame['yield_of_bond']='aa'
     for index, row_ in dFrame.iterrows():
         # print('ticker: ' + row_['ticker'])
@@ -766,8 +767,10 @@ def loadCredentilas(runfile):
     print('GOOGLE_PROJECT_CREDENTIALS_FILE_PATH: ', os.environ['GOOGLE_PROJECT_CREDENTIALS_FILE_PATH'])
 
 if __name__ == "__main__":
+    os.environ["GRPC_DEFAULT_SSL_ROOTS_FILE_PATH"] = "/home/invest/certs/russian_trusted_root_ca_pem.crt"
     yieldOfAllBonds = moex.loadYieldsOfAllBonds();
-    
+    #for key in yieldOfAllBonds:
+    #    yieldOfAllBonds[key]=str(yieldOfAllBonds[key])
     # print(moex.loadyield_of_bondByTicker('XS2157526315', bondsInfo))
     loadCredentilas(sys.argv[1])
     run(yieldOfAllBonds, 'Лист номер один', spreadsheetId=os.environ['GOOGLE_SPREADSHEET_ID'])
